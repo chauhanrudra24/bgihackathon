@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#include <FirebaseESP32.h>
+#include <Firebase_ESP_Client.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
