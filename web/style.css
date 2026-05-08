@@ -1,0 +1,242 @@
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #0f172a;
+    color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    overflow: hidden;
+}
+
+/* Dashboard Styles */
+.dashboard {
+    background: rgba(30, 41, 59, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 2.5rem;
+    border-radius: 20px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+    width: 100%;
+    max-width: 450px;
+    transition: transform 0.3s ease;
+}
+
+.dashboard:hover {
+    transform: translateY(-5px);
+}
+
+.header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+h1 {
+    margin: 0;
+    color: #38bdf8;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    font-size: 2.2rem;
+}
+
+.logout-btn {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+    border: 1px solid #ef4444;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.card {
+    background: #334155;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    border-left: 5px solid #38bdf8;
+    transition: background 0.3s ease;
+}
+
+.card:hover {
+    background: #3f4e66;
+}
+
+.card h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.value {
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin: 0.5rem 0;
+    color: #ffffff;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 5px;
+}
+
+.unit {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #94a3b8;
+}
+
+.status {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #10b981;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+    display: inline-block;
+    padding: 5px 15px;
+    border-radius: 8px;
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.status.dirty {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.status.warning {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.final-card {
+    border-left-color: #a855f7;
+}
+
+.final-card h3 {
+    color: #d8b4fe;
+}
+
+.update-timer {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin-bottom: 1.5rem;
+    font-weight: 600;
+    margin-top: -1.5rem;
+}
+
+.update-timer span {
+    color: #38bdf8;
+}
+
+.loading {
+    opacity: 0.5;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Authentication Screen Styles */
+.auth-container {
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-card {
+    background: rgba(30, 41, 59, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 3rem 2.5rem;
+    border-radius: 20px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+.auth-card h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.auth-card p {
+    color: #94a3b8;
+    margin-bottom: 2rem;
+}
+
+.input-group {
+    text-align: left;
+    margin-bottom: 1.5rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #cbd5e1;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1e293b;
+    color: white;
+    font-size: 1rem;
+    font-family: 'Inter', sans-serif;
+    box-sizing: border-box;
+    transition: border-color 0.3s;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: #38bdf8;
+}
+
+button[type="submit"] {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: #38bdf8;
+    color: #0f172a;
+    border: none;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+button[type="submit"]:hover {
+    background: #0ea5e9;
+}
+
+button[type="submit"]:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+}
+
+.error-msg {
+    color: #ef4444;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-height: 20px;
+}
