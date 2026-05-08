@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Water Quality Dashboard</title>
+    <title>Government Dashboard</title>
     <!-- Modern font from Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -93,6 +93,27 @@
             color: #ef4444; /* Dirty Red */
             background: rgba(239, 68, 68, 0.1);
         }
+        .status.warning {
+            color: #f59e0b; /* Amber */
+            background: rgba(245, 158, 11, 0.1);
+        }
+        .final-card {
+            border-left-color: #a855f7; /* Purple */
+        }
+        .final-card h3 {
+            color: #d8b4fe;
+        }
+        /* Update Timer */
+        .update-timer {
+            font-size: 0.9rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+            margin-top: -1.5rem;
+        }
+        .update-timer span {
+            color: #38bdf8;
+        }
         /* Loader styles before data arrives */
         .loading {
             opacity: 0.5;
@@ -107,17 +128,24 @@
 <body>
 
 <div class="dashboard">
-    <h1>Water Quality</h1>
+    <h1>Government Dashboard</h1>
+    <div class="update-timer" id="updateTimer">Waiting for connection...</div>
     
     <div class="card">
         <h3>TDS Level</h3>
         <div class="value loading" id="tdsValue">--<span class="unit">ppm</span></div>
+        <div class="status" id="tdsStatus">Waiting...</div>
     </div>
     
     <div class="card">
         <h3>Turbidity</h3>
         <div class="value loading" id="turbidityValue">--<span class="unit">V</span></div>
         <div class="status" id="waterStatus">Waiting...</div>
+    </div>
+
+    <div class="card final-card">
+        <h3>Overall Water Quality</h3>
+        <div class="status" id="finalStatus">Waiting...</div>
     </div>
 </div>
 
@@ -126,18 +154,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
 
-    // Your provided web app's Firebase configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyCvusQ7HayK60x0arP-wqXU5tvPd4NzBSs",
-      authDomain: "bgihackathon-3a036.firebaseapp.com",
-      // Inferring realtime database URL from project ID
-      databaseURL: "https://bgihackathon-3a036-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "bgihackathon-3a036",
-      storageBucket: "bgihackathon-3a036.firebasestorage.app",
-      messagingSenderId: "750420815331",
-      appId: "1:750420815331:web:e3fcbfa38828f7ab2f84d6",
-      measurementId: "G-6ZND77N0BN"
-    };
+    // Import your private config from env.js
+    import { firebaseConfig } from './env.js';
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
@@ -147,10 +165,17 @@
     const tdsEl = document.getElementById('tdsValue');
     const turbidityEl = document.getElementById('turbidityValue');
     const statusEl = document.getElementById('waterStatus');
+    const updateTimerEl = document.getElementById('updateTimer');
+    const tdsStatusEl = document.getElementById('tdsStatus');
+    const finalStatusEl = document.getElementById('finalStatus');
 
     // Reference to 'sensorData' inside Realtime Database
     const sensorRef = ref(db, 'sensorData');
     
+    // Variables for countdown
+    let countdownInterval;
+    let secondsLeft = 5;
+
     // Listen for real-time updates via WebSockets
     onValue(sensorRef, (snapshot) => {
         const data = snapshot.val();
@@ -160,18 +185,89 @@
             tdsEl.classList.remove('loading');
             turbidityEl.classList.remove('loading');
 
+            // Reset and start countdown timer
+            clearInterval(countdownInterval);
+            secondsLeft = 5;
+            updateTimerEl.innerHTML = `Next update in: <span>${secondsLeft}s</span>`;
+            
+            countdownInterval = setInterval(() => {
+                secondsLeft--;
+                if(secondsLeft > 0) {
+                    updateTimerEl.innerHTML = `Next update in: <span>${secondsLeft}s</span>`;
+                } else {
+                    updateTimerEl.innerHTML = `<span>Updating...</span>`;
+                }
+            }, 1000);
+
             // Update DOM elements
             tdsEl.innerHTML = `${parseFloat(data.tdsValue).toFixed(2)}<span class="unit">ppm</span>`;
             turbidityEl.innerHTML = `${parseFloat(data.turbidityVoltage).toFixed(2)}<span class="unit">V</span>`;
             
+            // Determine TDS Quality
+            const tds = parseFloat(data.tdsValue);
+            let tdsQuality = "";
+            let tdsClass = "status";
+
+            if (tds <= 50) {
+                tdsQuality = "EXCELLENT / ULTRA-PURE";
+                tdsClass = "status"; // Green
+            } else if (tds <= 150) {
+                tdsQuality = "IDEAL";
+                tdsClass = "status"; // Green
+            } else if (tds <= 300) {
+                tdsQuality = "GOOD / ACCEPTABLE";
+                tdsClass = "status"; // Green
+            } else if (tds <= 500) {
+                tdsQuality = "FAIR";
+                tdsClass = "status warning"; // Yellow
+            } else {
+                tdsQuality = "POOR / UNACCEPTABLE";
+                tdsClass = "status dirty"; // Red
+            }
+
+            tdsStatusEl.innerText = tdsQuality;
+            tdsStatusEl.className = tdsClass;
+
+            // Turbidity Quality
             statusEl.innerText = data.waterStatus;
-            
-            // Adjust styling based on water status
             if (data.waterStatus === 'CLEAR') {
                 statusEl.className = 'status'; // Default green
             } else {
                 statusEl.className = 'status dirty'; // Red styles
             }
+
+            // Determine Final Overall Quality
+            let finalQuality = "";
+            let finalClass = "status";
+
+            if (data.waterStatus === 'DIRTY') {
+                finalQuality = "UNSAFE (DIRTY WATER)";
+                finalClass = "status dirty"; // Red
+            } else {
+                // Water is CLEAR, so we judge based on TDS
+                if (tds <= 50) {
+                    finalQuality = "ULTRA-PURE (VERY FEW MINERALS)";
+                    finalClass = "status"; // Green
+                } else if (tds <= 150) {
+                    finalQuality = "IDEAL (BEST TASTE & MINERAL BALANCE)";
+                    finalClass = "status"; // Green
+                } else if (tds <= 300) {
+                    finalQuality = "GOOD / ACCEPTABLE (PLEASANT TO NORMAL TASTE)";
+                    finalClass = "status"; // Green
+                } else if (tds <= 500) {
+                    finalQuality = "FAIR (NOTICEABLY HIGHER MINERAL TASTE)";
+                    finalClass = "status warning"; // Yellow
+                } else {
+                    finalQuality = "POOR / UNACCEPTABLE (HARD, MINERAL-HEAVY)";
+                    finalClass = "status dirty"; // Red
+                }
+            }
+
+            // Adjust font size for long text
+            finalStatusEl.style.fontSize = finalQuality.length > 25 ? "1.1rem" : "1.5rem";
+
+            finalStatusEl.innerText = finalQuality;
+            finalStatusEl.className = finalClass;
         }
     });
 </script>
