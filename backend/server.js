@@ -23,10 +23,12 @@ io.on('connection', (socket) => {
 });
 
 // Database Connection
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
     seedAdmin();
+    // Start listening to Firebase after MongoDB connects
+    require('./firebaseListener')(io);
   })
   .catch(err => console.log(err));
 
