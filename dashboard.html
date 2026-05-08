@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Quality Dashboard</title>
+    <!-- Modern font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Sleek dark mode background */
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .dashboard {
+            background: rgba(30, 41, 59, 0.8); /* Glassmorphism effect */
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 450px;
+            transition: transform 0.3s ease;
+        }
+        .dashboard:hover {
+            transform: translateY(-5px);
+        }
+        h1 {
+            margin-top: 0;
+            color: #38bdf8;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 2rem;
+            font-size: 2.2rem;
+        }
+        .card {
+            background: #334155;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            border-left: 5px solid #38bdf8;
+            transition: background 0.3s ease;
+        }
+        .card:hover {
+            background: #3f4e66;
+        }
+        .card h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        .value {
+            font-size: 2.8rem;
+            font-weight: 800;
+            margin: 0.5rem 0;
+            color: #ffffff;
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 5px;
+        }
+        .unit {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #94a3b8;
+        }
+        .status {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #10b981; /* Default Clear Green */
+            text-transform: uppercase;
+            margin-top: 0.5rem;
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 8px;
+            background: rgba(16, 185, 129, 0.1);
+        }
+        .status.dirty {
+            color: #ef4444; /* Dirty Red */
+            background: rgba(239, 68, 68, 0.1);
+        }
+        /* Loader styles before data arrives */
+        .loading {
+            opacity: 0.5;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <h1>Water Quality</h1>
+    
+    <div class="card">
+        <h3>TDS Level</h3>
+        <div class="value loading" id="tdsValue">--<span class="unit">ppm</span></div>
+    </div>
+    
+    <div class="card">
+        <h3>Turbidity</h3>
+        <div class="value loading" id="turbidityValue">--<span class="unit">V</span></div>
+        <div class="status" id="waterStatus">Waiting...</div>
+    </div>
+</div>
+
+<script type="module">
+    // Import standard Firebase JS v10 Web SDK modules
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+
+    // Your provided web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCvusQ7HayK60x0arP-wqXU5tvPd4NzBSs",
+      authDomain: "bgihackathon-3a036.firebaseapp.com",
+      // Inferring realtime database URL from project ID
+      databaseURL: "https://bgihackathon-3a036-default-rtdb.firebaseio.com",
+      projectId: "bgihackathon-3a036",
+      storageBucket: "bgihackathon-3a036.firebasestorage.app",
+      messagingSenderId: "750420815331",
+      appId: "1:750420815331:web:e3fcbfa38828f7ab2f84d6",
+      measurementId: "G-6ZND77N0BN"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // References to UI elements
+    const tdsEl = document.getElementById('tdsValue');
+    const turbidityEl = document.getElementById('turbidityValue');
+    const statusEl = document.getElementById('waterStatus');
+
+    // Reference to 'sensorData' inside Realtime Database
+    const sensorRef = ref(db, 'sensorData');
+    
+    // Listen for real-time updates via WebSockets
+    onValue(sensorRef, (snapshot) => {
+        const data = snapshot.val();
+        
+        if (data) {
+            // Remove loading animation
+            tdsEl.classList.remove('loading');
+            turbidityEl.classList.remove('loading');
+
+            // Update DOM elements
+            tdsEl.innerHTML = `${parseFloat(data.tdsValue).toFixed(2)}<span class="unit">ppm</span>`;
+            turbidityEl.innerHTML = `${parseFloat(data.turbidityVoltage).toFixed(2)}<span class="unit">V</span>`;
+            
+            statusEl.innerText = data.waterStatus;
+            
+            // Adjust styling based on water status
+            if (data.waterStatus === 'CLEAR') {
+                statusEl.className = 'status'; // Default green
+            } else {
+                statusEl.className = 'status dirty'; // Red styles
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
