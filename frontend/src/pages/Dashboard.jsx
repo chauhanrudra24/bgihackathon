@@ -18,7 +18,7 @@ const Dashboard = () => {
 
     // Connect to Socket
     const socket = io(import.meta.env.VITE_API_URL);
-    
+
     socket.on('sensor-update', (newData) => {
       setData(newData);
       setCountdown(5);
@@ -48,17 +48,17 @@ const Dashboard = () => {
   let tdsClass = "status";
 
   if (tds <= 50) {
-      tdsQuality = "EXCELLENT / ULTRA-PURE";
+    tdsQuality = "EXCELLENT / ULTRA-PURE";
   } else if (tds <= 150) {
-      tdsQuality = "IDEAL";
+    tdsQuality = "IDEAL";
   } else if (tds <= 300) {
-      tdsQuality = "GOOD / ACCEPTABLE";
+    tdsQuality = "GOOD / ACCEPTABLE";
   } else if (tds <= 500) {
-      tdsQuality = "FAIR";
-      tdsClass = "status warning";
+    tdsQuality = "FAIR";
+    tdsClass = "status warning";
   } else {
-      tdsQuality = "POOR / UNACCEPTABLE";
-      tdsClass = "status dirty";
+    tdsQuality = "POOR / UNACCEPTABLE";
+    tdsClass = "status dirty";
   }
 
   const turbClass = data.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
@@ -67,22 +67,22 @@ const Dashboard = () => {
   let finalClass = "status";
 
   if (data.waterStatus === 'DIRTY') {
-      finalQuality = "UNSAFE (DIRTY WATER)";
-      finalClass = "status dirty";
+    finalQuality = "UNSAFE (DIRTY WATER)";
+    finalClass = "status dirty";
   } else {
-      if (tds <= 50) {
-          finalQuality = "ULTRA-PURE (VERY FEW MINERALS)";
-      } else if (tds <= 150) {
-          finalQuality = "IDEAL (BEST TASTE & MINERAL BALANCE)";
-      } else if (tds <= 300) {
-          finalQuality = "GOOD / ACCEPTABLE (PLEASANT TO NORMAL TASTE)";
-      } else if (tds <= 500) {
-          finalQuality = "FAIR (NOTICEABLY HIGHER MINERAL TASTE)";
-          finalClass = "status warning";
-      } else {
-          finalQuality = "POOR / UNACCEPTABLE (HARD, MINERAL-HEAVY)";
-          finalClass = "status dirty";
-      }
+    if (tds <= 50) {
+      finalQuality = "ULTRA-PURE (VERY FEW MINERALS)";
+    } else if (tds <= 150) {
+      finalQuality = "IDEAL (BEST TASTE & MINERAL BALANCE)";
+    } else if (tds <= 300) {
+      finalQuality = "GOOD / ACCEPTABLE (PLEASANT TO NORMAL TASTE)";
+    } else if (tds <= 500) {
+      finalQuality = "FAIR (NOTICEABLY HIGHER MINERAL TASTE)";
+      finalClass = "status warning";
+    } else {
+      finalQuality = "POOR / UNACCEPTABLE (HARD, MINERAL-HEAVY)";
+      finalClass = "status dirty";
+    }
   }
 
   const fontSize = finalQuality.length > 25 ? "1.1rem" : "1.5rem";
@@ -90,30 +90,30 @@ const Dashboard = () => {
   return (
     <div className="dashboard">
       <div className="header-flex">
-          <h1>Government Dashboard</h1>
-          <button onClick={handleLogout} className="logout-btn">Logout</button>
+        <h1>Government Dashboard</h1>
+        <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
-      
+
       <div className="update-timer">
-          {countdown > 0 ? `Next update in: ` : ''} 
-          <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
+        {countdown > 0 ? `Next update in: ` : ''}
+        <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
       </div>
-      
+
       <div className="card">
-          <h3>TDS Level</h3>
-          <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
-          <div className={tdsClass}>{tdsQuality}</div>
+        <h3>TDS Level</h3>
+        <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
+        <div className={tdsClass}>{tdsQuality}</div>
       </div>
-      
+
       <div className="card">
-          <h3>Turbidity</h3>
-          <div className="value">{data.turbidityVoltage.toFixed(2)}<span className="unit">V</span></div>
-          <div className={turbClass}>{data.waterStatus}</div>
+        <h3>Turbidity</h3>
+        <div className="value">{data.turbidityVoltage.toFixed(2)}<span className="unit">V</span></div>
+        <div className={turbClass}>{data.waterStatus}</div>
       </div>
 
       <div className="card final-card">
-          <h3>Overall Water Quality</h3>
-          <div className={finalClass} style={{ fontSize }}>{finalQuality}</div>
+        <h3>Overall Water Quality</h3>
+        <div className={finalClass} style={{ fontSize }}>{finalQuality}</div>
       </div>
     </div>
   );
