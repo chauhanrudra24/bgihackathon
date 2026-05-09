@@ -36,8 +36,8 @@ void setup() {
   // wifiManager.resetSettings(); // Uncomment to wipe stored Wi-Fi credentials
 
   Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "WaterQuality_AP"
-  if (!wifiManager.autoConnect("WaterQuality_AP")) {
+  // Connects to saved Wi-Fi or sets up an Access Point named "JalBoard_GovNode_AP"
+  if (!wifiManager.autoConnect("JalBoard_GovNode_AP")) {
     Serial.println("Failed to connect, restarting...");
     delay(3000);
     ESP.restart(); // Reset and try again
