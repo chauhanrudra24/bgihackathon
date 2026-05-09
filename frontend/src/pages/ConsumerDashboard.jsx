@@ -5,6 +5,7 @@ import { db } from '../firebase';
 
 const ConsumerDashboard = () => {
   const [data, setData] = useState(null);
+  const [govData, setGovData] = useState(null);
   const [valveState, setValveState] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
@@ -20,8 +21,8 @@ const ConsumerDashboard = () => {
       return;
     }
 
-    // Connect directly to Firebase Realtime Database
     const sensorRef = ref(db, `sensorData/${nodeId}`);
+    const govSensorRef = ref(db, `sensorData/gov_node`);
     const valveRef = ref(db, `valves/${nodeId}`);
     
     const unsubscribeSensor = onValue(sensorRef, (snapshot) => {
@@ -37,12 +38,20 @@ const ConsumerDashboard = () => {
       setErrorMsg('Firebase Error: ' + error.message);
     });
 
+    const unsubscribeGovSensor = onValue(govSensorRef, (snapshot) => {
+      const govNewData = snapshot.val();
+      if (govNewData) {
+        setGovData(govNewData);
+      }
+    });
+
     const unsubscribeValve = onValue(valveRef, (snapshot) => {
       setValveState(snapshot.val() || false);
     });
 
     return () => {
       unsubscribeSensor();
+      unsubscribeGovSensor();
       unsubscribeValve();
     };
   }, [nodeId, navigate, user.role, user.nodeId]);
@@ -68,64 +77,92 @@ const ConsumerDashboard = () => {
   if (errorMsg && !data) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Waiting for ESP32/Firebase connection...</h2></div>;
 
-  const tds = data.tdsValue || 0;
-  let tdsQuality = "";
-  let tdsClass = "status";
+  const renderQualityCard = (sensorData, title) => {
+    if (!sensorData) return null;
 
-  if (tds <= 50) {
-      tdsQuality = "EXCELLENT";
-  } else if (tds <= 150) {
-      tdsQuality = "IDEAL";
-  } else if (tds <= 300) {
-      tdsQuality = "GOOD";
-  } else if (tds <= 500) {
-      tdsQuality = "FAIR";
-      tdsClass = "status warning";
-  } else {
-      tdsQuality = "POOR / UNACCEPTABLE";
-      tdsClass = "status dirty";
-  }
+    const tds = sensorData.tdsValue || 0;
+    let tdsQuality = "";
+    let tdsClass = "status";
 
-  const turbVoltage = data.turbidityVoltage || 0;
-  const turbClass = data.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
+    if (tds <= 50) {
+        tdsQuality = "EXCELLENT";
+    } else if (tds <= 150) {
+        tdsQuality = "IDEAL";
+    } else if (tds <= 300) {
+        tdsQuality = "GOOD";
+    } else if (tds <= 500) {
+        tdsQuality = "FAIR";
+        tdsClass = "status warning";
+    } else {
+        tdsQuality = "POOR / UNACCEPTABLE";
+        tdsClass = "status dirty";
+    }
 
-  let finalQuality = "";
-  let finalClass = "status";
+    const turbVoltage = sensorData.turbidityVoltage || 0;
+    const turbClass = sensorData.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
 
-  if (data.waterStatus === 'DIRTY') {
-      finalQuality = "UNSAFE (DIRTY WATER)";
-      finalClass = "status dirty";
-  } else {
-      if (tds <= 50) {
-          finalQuality = "ULTRA-PURE";
-      } else if (tds <= 150) {
-          finalQuality = "IDEAL (BEST TASTE)";
-      } else if (tds <= 300) {
-          finalQuality = "GOOD / ACCEPTABLE";
-      } else if (tds <= 500) {
-          finalQuality = "FAIR (MINERAL-HEAVY)";
-          finalClass = "status warning";
-      } else {
-          finalQuality = "POOR (UNACCEPTABLE)";
-          finalClass = "status dirty";
-      }
-  }
+    let finalQuality = "";
+    let finalClass = "status";
+
+    if (sensorData.waterStatus === 'DIRTY') {
+        finalQuality = "UNSAFE (DIRTY WATER)";
+        finalClass = "status dirty";
+    } else {
+        if (tds <= 50) {
+            finalQuality = "ULTRA-PURE";
+        } else if (tds <= 150) {
+            finalQuality = "IDEAL (BEST TASTE)";
+        } else if (tds <= 300) {
+            finalQuality = "GOOD / ACCEPTABLE";
+        } else if (tds <= 500) {
+            finalQuality = "FAIR (MINERAL-HEAVY)";
+            finalClass = "status warning";
+        } else {
+            finalQuality = "POOR (UNACCEPTABLE)";
+            finalClass = "status dirty";
+        }
+    }
+
+    return (
+      <div className="node-container" style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '15px', marginBottom: '20px'}}>
+        <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title}</h2>
+        <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+          <div className="card" style={{margin: 0}}>
+              <h3>TDS Level</h3>
+              <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
+              <div className={tdsClass}>{tdsQuality}</div>
+          </div>
+          
+          <div className="card" style={{margin: 0}}>
+              <h3>Turbidity</h3>
+              <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
+              <div className={turbClass}>{sensorData.waterStatus || "UNKNOWN"}</div>
+          </div>
+
+          <div className="card final-card" style={{margin: 0}}>
+              <h3>Overall Quality</h3>
+              <div className={finalClass} style={{fontSize: "1.1rem"}}>{finalQuality}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="dashboard" style={{maxWidth: "800px"}}>
+    <div className="dashboard" style={{maxWidth: "900px"}}>
       <div className="header-flex">
           <h1>Welcome, {user.name}</h1>
           <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
       
-      <div className="update-timer" style={{marginBottom: "30px"}}>
+      <div className="update-timer">
           {countdown > 0 ? `Next update in: ` : ''} 
           <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
       </div>
 
-      <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
           <div>
-            <h3 style={{ margin: 0 }}>Main Water Valve</h3>
+            <h3 style={{ margin: 0 }}>🏠 Your Main Water Valve</h3>
             <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Controls water supply to your home</p>
           </div>
           <button 
@@ -146,24 +183,9 @@ const ConsumerDashboard = () => {
           </button>
       </div>
 
-      <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '30px', marginTop: '30px' }}>
-        <div className="card">
-            <h3>TDS Level</h3>
-            <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
-            <div className={tdsClass}>{tdsQuality}</div>
-        </div>
-        
-        <div className="card">
-            <h3>Turbidity</h3>
-            <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
-            <div className={turbClass}>{data.waterStatus || "UNKNOWN"}</div>
-        </div>
-      </div>
+      {renderQualityCard(govData, "🏛️ Government Supplied Water (Main Node)")}
+      {renderQualityCard(data, "🏠 Your Home Water Quality (Tap)")}
 
-      <div className="card final-card" style={{ marginTop: '30px' }}>
-          <h3>Overall Quality</h3>
-          <div className={finalClass} style={{fontSize: "1.2rem"}}>{finalQuality}</div>
-      </div>
     </div>
   );
 };

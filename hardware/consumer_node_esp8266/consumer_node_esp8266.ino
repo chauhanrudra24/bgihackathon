@@ -25,7 +25,7 @@ unsigned long sendDataPrevMillis = 0;
 // Note: ESP8266 only has ONE analog pin (A0). If using both sensors, you need an I2C ADC or multiplexer!
 #define TURBIDITY_PIN A0
 #define TDS_PIN A0 // Cannot use same pin for both without an external ADC module
-#define RELAY_PIN D1 // Relay for Solenoid Valve
+#define RELAY_PIN D3 // Relay for Solenoid Valve
 
 float turbidityThreshold = 3.15;
 

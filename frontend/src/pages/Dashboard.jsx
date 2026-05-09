@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ref, onValue, set } from 'firebase/database';
 import { db } from '../firebase';
 
-const NodeCard = ({ title, nodeData, valveState, onToggleValve, hasValve }) => {
+const NodeCard = ({ title, nodeData }) => {
   if (!nodeData) return <div className="card"><h3>{title}</h3><p>Waiting for data...</p></div>;
 
   const tds = nodeData.tdsValue || 0;
@@ -68,33 +68,33 @@ const NodeCard = ({ title, nodeData, valveState, onToggleValve, hasValve }) => {
           <h3>Overall Quality</h3>
           <div className={finalClass} style={{fontSize: "1.2rem"}}>{finalQuality}</div>
       </div>
-
-      {hasValve && (
-        <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
-          <div>
-            <h3 style={{ margin: 0 }}>Water Valve</h3>
-            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Control Override</p>
-          </div>
-          <button 
-            onClick={onToggleValve} 
-            style={{
-              padding: '8px 20px', 
-              fontSize: '1rem', 
-              fontWeight: 'bold', 
-              border: 'none', 
-              borderRadius: '8px', 
-              cursor: 'pointer',
-              background: valveState ? '#2ecc71' : '#e74c3c',
-              color: 'white'
-            }}
-          >
-            {valveState ? "OPEN" : "CLOSED"}
-          </button>
-        </div>
-      )}
     </div>
   );
 };
+
+const ValveControlCard = ({ title, valveState, onToggleValve }) => (
+  <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+    <div>
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Override Control</p>
+    </div>
+    <button 
+      onClick={onToggleValve} 
+      style={{
+        padding: '8px 20px', 
+        fontSize: '1rem', 
+        fontWeight: 'bold', 
+        border: 'none', 
+        borderRadius: '8px', 
+        cursor: 'pointer',
+        background: valveState ? '#2ecc71' : '#e74c3c',
+        color: 'white'
+      }}
+    >
+      {valveState ? "OPEN" : "CLOSED"}
+    </button>
+  </div>
+);
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -110,7 +110,6 @@ const Dashboard = () => {
       return;
     }
 
-    // Connect directly to Firebase Realtime Database
     const sensorRef = ref(db, 'sensorData');
     const valvesRef = ref(db, 'valves');
     
@@ -162,31 +161,36 @@ const Dashboard = () => {
           <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
       
-      <div className="update-timer" style={{marginBottom: "30px"}}>
+      <div className="update-timer">
           {countdown > 0 ? `Next update in: ` : ''} 
           <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
       </div>
 
-      <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
+      <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '30px' }}>
+        
+        {/* Main Gov Water Quality */}
         <NodeCard 
           title="🏛️ Jal Board Pumping Station (Sector-12 Node)" 
           nodeData={data.gov_node} 
-          hasValve={false} 
         />
-        <NodeCard 
-          title="🏠 Ramesh Kumar (House #42-B, Vasant Vihar)" 
-          nodeData={data.consumer_node} 
-          hasValve={true} 
-          valveState={valves.consumer_node} 
-          onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
-        />
-        <NodeCard 
-          title="🏠 Priya Patel (House #104, Saket Enclave)" 
-          nodeData={data.consumer_node_8266} 
-          hasValve={true}
-          valveState={valves.consumer_node_8266}
-          onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
-        />
+
+        {/* Consumer Valve Overrides */}
+        <div className="node-container">
+          <h2 style={{color: '#fff', marginBottom: '15px', marginTop: '20px'}}>🏠 Consumer Valve Controls</h2>
+          
+          <ValveControlCard 
+            title="Ramesh Kumar (House #42-B, Vasant Vihar)"
+            valveState={valves.consumer_node}
+            onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
+          />
+          
+          <ValveControlCard 
+            title="Priya Patel (House #104, Saket Enclave)"
+            valveState={valves.consumer_node_8266}
+            onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
+          />
+        </div>
+
       </div>
     </div>
   );
