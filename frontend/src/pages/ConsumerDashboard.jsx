@@ -78,7 +78,17 @@ const ConsumerDashboard = () => {
   if (!data) return <div className="dashboard"><h2>Waiting for ESP32/Firebase connection...</h2></div>;
 
   const renderQualityCard = (sensorData, title) => {
-    if (!sensorData) return null;
+    if (!sensorData || Object.keys(sensorData).length === 0) {
+      return (
+        <div className="node-container" style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '15px', marginBottom: '20px'}}>
+          <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title}</h2>
+          <div className="card" style={{borderLeftColor: '#f59e0b', textAlign: 'center', padding: '40px 20px', margin: 0}}>
+            <h2 style={{color: '#f59e0b', margin: 0}}>🔌 Node Disconnected</h2>
+            <p style={{opacity: 0.7, marginBottom: 0}}>Waiting for ESP to power on and connect to Wi-Fi...</p>
+          </div>
+        </div>
+      );
+    }
 
     const tds = sensorData.tdsValue || 0;
     let tdsQuality = "";

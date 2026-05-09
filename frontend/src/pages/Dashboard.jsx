@@ -4,7 +4,17 @@ import { ref, onValue, set } from 'firebase/database';
 import { db } from '../firebase';
 
 const NodeCard = ({ title, nodeData }) => {
-  if (!nodeData) return <div className="card"><h3>{title}</h3><p>Waiting for data...</p></div>;
+  if (!nodeData || Object.keys(nodeData).length === 0) {
+    return (
+      <div className="node-container">
+        <h2 style={{color: '#fff', marginBottom: '15px'}}>{title}</h2>
+        <div className="card" style={{borderLeftColor: '#f59e0b', textAlign: 'center', padding: '40px 20px'}}>
+          <h2 style={{color: '#f59e0b', margin: 0}}>🔌 Node Disconnected</h2>
+          <p style={{opacity: 0.7, marginBottom: 0}}>Waiting for ESP to power on and connect to Wi-Fi...</p>
+        </div>
+      </div>
+    );
+  }
 
   const tds = nodeData.tdsValue || 0;
   let tdsQuality = "";
