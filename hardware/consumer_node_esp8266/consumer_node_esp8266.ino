@@ -32,6 +32,7 @@ void setup() {
   Serial.begin(115200);
   
   // 1. Connect to WiFi using WiFiManager
+  WiFi.mode(WIFI_STA);
   WiFiManager wifiManager;
   
   pinMode(LED_BUILTIN, OUTPUT);
@@ -88,6 +89,9 @@ void loop() {
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266")) {
       bool valveState = fbdo1.boolData();
       digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
+      Serial.printf("Valve state read from Firebase: %s\n", valveState ? "OPEN" : "CLOSED");
+    } else {
+      Serial.println("Valve read error (or doesn't exist yet): " + fbdo1.errorReason());
     }
   }
 
