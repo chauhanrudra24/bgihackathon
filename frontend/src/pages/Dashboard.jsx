@@ -3,8 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { ref, onValue, set } from 'firebase/database';
 import { db } from '../firebase';
 
+const isNodeOnline = (nodeData) => {
+  if (!nodeData || !nodeData.lastSeen) return false;
+  return (Date.now() - nodeData.lastSeen) < 20000;
+};
+
 const NodeCard = ({ title, nodeData }) => {
-  if (!nodeData || Object.keys(nodeData).length === 0) {
+  const online = isNodeOnline(nodeData);
+
+  if (!online) {
     return (
       <div className="node-container">
         <h2 style={{color: '#fff', marginBottom: '15px'}}>{title}</h2>
@@ -61,7 +68,7 @@ const NodeCard = ({ title, nodeData }) => {
 
   return (
     <div className="node-container">
-      <h2 style={{color: '#fff', marginBottom: '15px'}}>{title}</h2>
+      <h2 style={{color: '#fff', marginBottom: '15px'}}>{title} <span style={{fontSize: '0.9rem', padding: '3px 10px', background: 'rgba(46, 204, 113, 0.2)', color: '#2ecc71', borderRadius: '20px', marginLeft: '10px'}}>● ONLINE</span></h2>
       <div className="card">
           <h3>TDS Level</h3>
           <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
@@ -82,29 +89,34 @@ const NodeCard = ({ title, nodeData }) => {
   );
 };
 
-const ValveControlCard = ({ title, valveState, onToggleValve }) => (
-  <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
-    <div>
-      <h3 style={{ margin: 0 }}>{title}</h3>
-      <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Override Control</p>
+const ValveControlCard = ({ title, valveState, onToggleValve, nodeData }) => {
+  const online = isNodeOnline(nodeData);
+
+  return (
+    <div className="card" style={{ background: online ? (valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)') : 'rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', opacity: online ? 1 : 0.6 }}>
+      <div>
+        <h3 style={{ margin: 0 }}>{title} {online ? '' : <span style={{color: '#e74c3c', fontSize: '0.8rem'}}>(Offline)</span>}</h3>
+        <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Override Control</p>
+      </div>
+      <button 
+        onClick={online ? onToggleValve : null} 
+        disabled={!online}
+        style={{
+          padding: '8px 20px', 
+          fontSize: '1rem', 
+          fontWeight: 'bold', 
+          border: 'none', 
+          borderRadius: '8px', 
+          cursor: online ? 'pointer' : 'not-allowed',
+          background: online ? (valveState ? '#2ecc71' : '#e74c3c') : '#7f8c8d',
+          color: 'white'
+        }}
+      >
+        {online ? (valveState ? "OPEN" : "CLOSED") : "OFFLINE"}
+      </button>
     </div>
-    <button 
-      onClick={onToggleValve} 
-      style={{
-        padding: '8px 20px', 
-        fontSize: '1rem', 
-        fontWeight: 'bold', 
-        border: 'none', 
-        borderRadius: '8px', 
-        cursor: 'pointer',
-        background: valveState ? '#2ecc71' : '#e74c3c',
-        color: 'white'
-      }}
-    >
-      {valveState ? "OPEN" : "CLOSED"}
-    </button>
-  </div>
-);
+  );
+};
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -191,12 +203,14 @@ const Dashboard = () => {
           <ValveControlCard 
             title="Ramesh Kumar (House #42-B, Vasant Vihar)"
             valveState={valves.consumer_node}
+            nodeData={data.consumer_node}
             onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
           />
           
           <ValveControlCard 
             title="Priya Patel (House #104, Saket Enclave)"
             valveState={valves.consumer_node_8266}
+            nodeData={data.consumer_node_8266}
             onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
           />
         </div>

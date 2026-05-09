@@ -77,11 +77,20 @@ const ConsumerDashboard = () => {
   if (errorMsg && !data) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Waiting for ESP32/Firebase connection...</h2></div>;
 
+  const isNodeOnline = (sensorData) => {
+    if (!sensorData || !sensorData.lastSeen) return false;
+    return (Date.now() - sensorData.lastSeen) < 20000;
+  };
+
+  const myNodeOnline = isNodeOnline(data);
+
   const renderQualityCard = (sensorData, title) => {
-    if (!sensorData || Object.keys(sensorData).length === 0) {
+    const online = isNodeOnline(sensorData);
+
+    if (!online) {
       return (
         <div className="node-container" style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '15px', marginBottom: '20px'}}>
-          <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title}</h2>
+          <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title} <span style={{fontSize: '0.8rem', padding: '3px 10px', background: 'rgba(231, 76, 60, 0.2)', color: '#e74c3c', borderRadius: '20px', marginLeft: '10px'}}>● OFFLINE</span></h2>
           <div className="card" style={{borderLeftColor: '#f59e0b', textAlign: 'center', padding: '40px 20px', margin: 0}}>
             <h2 style={{color: '#f59e0b', margin: 0}}>🔌 Node Disconnected</h2>
             <p style={{opacity: 0.7, marginBottom: 0}}>Waiting for ESP to power on and connect to Wi-Fi...</p>
@@ -135,7 +144,7 @@ const ConsumerDashboard = () => {
 
     return (
       <div className="node-container" style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '15px', marginBottom: '20px'}}>
-        <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title}</h2>
+        <h2 style={{color: '#fff', marginBottom: '15px', marginTop: 0}}>{title} <span style={{fontSize: '0.8rem', padding: '3px 10px', background: 'rgba(46, 204, 113, 0.2)', color: '#2ecc71', borderRadius: '20px', marginLeft: '10px'}}>● ONLINE</span></h2>
         <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
           <div className="card" style={{margin: 0}}>
               <h3>TDS Level</h3>
@@ -170,26 +179,27 @@ const ConsumerDashboard = () => {
           <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
       </div>
 
-      <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+      <div className="card" style={{ background: myNodeOnline ? (valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)') : 'rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', opacity: myNodeOnline ? 1 : 0.6 }}>
           <div>
-            <h3 style={{ margin: 0 }}>🏠 Your Main Water Valve</h3>
+            <h3 style={{ margin: 0 }}>🏠 Your Main Water Valve {myNodeOnline ? '' : <span style={{color: '#e74c3c', fontSize: '0.8rem'}}>(Offline)</span>}</h3>
             <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Controls water supply to your home</p>
           </div>
           <button 
-            onClick={toggleValve} 
+            onClick={myNodeOnline ? toggleValve : null} 
+            disabled={!myNodeOnline}
             style={{
               padding: '10px 30px', 
               fontSize: '1.2rem', 
               fontWeight: 'bold', 
               border: 'none', 
               borderRadius: '8px', 
-              cursor: 'pointer',
-              background: valveState ? '#2ecc71' : '#e74c3c',
+              cursor: myNodeOnline ? 'pointer' : 'not-allowed',
+              background: myNodeOnline ? (valveState ? '#2ecc71' : '#e74c3c') : '#7f8c8d',
               color: 'white',
               boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
             }}
           >
-            {valveState ? "OPEN" : "CLOSED"}
+            {myNodeOnline ? (valveState ? "OPEN" : "CLOSED") : "OFFLINE"}
           </button>
       </div>
 

@@ -149,6 +149,7 @@ void loop() {
       success = false;
       Serial.println("Firebase Write Error (TDS): " + fbdo.errorReason());
     }
+    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node_8266/lastSeen");
 
     if (success) {
       Serial.println("==> Successfully sent to Firebase!");
