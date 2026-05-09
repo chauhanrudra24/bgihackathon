@@ -24,8 +24,8 @@ unsigned long sendDataPrevMillis = 0;
 // =========================
 // SENSOR PINS
 // =========================
-#define TURBIDITY_PIN 34
-#define TDS_PIN 35
+#define TURBIDITY_PIN 33
+#define TDS_PIN 27
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2

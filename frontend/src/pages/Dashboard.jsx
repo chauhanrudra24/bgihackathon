@@ -99,20 +99,19 @@ const ValveControlCard = ({ title, valveState, onToggleValve, nodeData }) => {
         <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Override Control</p>
       </div>
       <button 
-        onClick={online ? onToggleValve : null} 
-        disabled={!online}
+        onClick={onToggleValve} 
         style={{
           padding: '8px 20px', 
           fontSize: '1rem', 
           fontWeight: 'bold', 
           border: 'none', 
           borderRadius: '8px', 
-          cursor: online ? 'pointer' : 'not-allowed',
-          background: online ? (valveState ? '#2ecc71' : '#e74c3c') : '#7f8c8d',
+          cursor: 'pointer',
+          background: valveState ? '#2ecc71' : '#e74c3c',
           color: 'white'
         }}
       >
-        {online ? (valveState ? "OPEN" : "CLOSED") : "OFFLINE"}
+        {valveState ? "OPEN" : "CLOSED"}
       </button>
     </div>
   );

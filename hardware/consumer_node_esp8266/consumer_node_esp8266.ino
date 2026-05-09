@@ -15,7 +15,8 @@
 // =========================
 #include "env.h"
 
-FirebaseData fbdo;
+FirebaseData fbdo1;
+FirebaseData fbdo2;
 FirebaseAuth auth;
 FirebaseConfig config;
 
@@ -84,8 +85,8 @@ void loop() {
   // Check Valve Status every 1 second
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
-    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node_8266")) {
-      bool valveState = fbdo.boolData();
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266")) {
+      bool valveState = fbdo1.boolData();
       digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
     }
   }
@@ -94,10 +95,10 @@ void loop() {
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
-    if (Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node_8266/lastSeen")) {
+    if (Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen")) {
       Serial.println("Heartbeat sent to Firebase.");
     } else {
-      Serial.println("Firebase Write Error: " + fbdo.errorReason());
+      Serial.println("Firebase Write Error: " + fbdo2.errorReason());
     }
   }
 }

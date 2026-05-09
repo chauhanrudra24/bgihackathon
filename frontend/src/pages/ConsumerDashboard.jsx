@@ -178,21 +178,20 @@ const ConsumerDashboard = () => {
             <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Controls water supply to your home</p>
           </div>
           <button 
-            onClick={myNodeOnline ? toggleValve : null} 
-            disabled={!myNodeOnline}
+            onClick={toggleValve} 
             style={{
               padding: '10px 30px', 
               fontSize: '1.2rem', 
               fontWeight: 'bold', 
               border: 'none', 
               borderRadius: '8px', 
-              cursor: myNodeOnline ? 'pointer' : 'not-allowed',
-              background: myNodeOnline ? (valveState ? '#2ecc71' : '#e74c3c') : '#7f8c8d',
+              cursor: 'pointer',
+              background: valveState ? '#2ecc71' : '#e74c3c',
               color: 'white',
               boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
             }}
           >
-            {myNodeOnline ? (valveState ? "OPEN" : "CLOSED") : "OFFLINE"}
+            {valveState ? "OPEN" : "CLOSED"}
           </button>
       </div>
 
