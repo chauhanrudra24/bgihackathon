@@ -28,6 +28,10 @@ unsigned long sendDataPrevMillis = 0;
 #define TDS_PIN 35
 #define RELAY_PIN 14 // Relay for Solenoid Valve
 
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
+
 float turbidityThreshold = 3.15;
 
 void setup() {

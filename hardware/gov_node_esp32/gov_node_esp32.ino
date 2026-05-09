@@ -27,6 +27,10 @@ unsigned long sendDataPrevMillis = 0;
 #define TURBIDITY_PIN 34
 #define TDS_PIN 35
 
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
+
 float turbidityThreshold = 3.15;
 
 void setup() {
