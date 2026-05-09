@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, set } from 'firebase/database';
 import { db } from '../firebase';
 
-const NodeCard = ({ title, nodeData }) => {
+const NodeCard = ({ title, nodeData, valveState, onToggleValve, hasValve }) => {
   if (!nodeData) return <div className="card"><h3>{title}</h3><p>Waiting for data...</p></div>;
 
   const tds = nodeData.tdsValue || 0;
@@ -68,21 +68,53 @@ const NodeCard = ({ title, nodeData }) => {
           <h3>Overall Quality</h3>
           <div className={finalClass} style={{fontSize: "1.2rem"}}>{finalQuality}</div>
       </div>
+
+      {hasValve && (
+        <div className="card" style={{ background: valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Water Valve</h3>
+            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Control Override</p>
+          </div>
+          <button 
+            onClick={onToggleValve} 
+            style={{
+              padding: '8px 20px', 
+              fontSize: '1rem', 
+              fontWeight: 'bold', 
+              border: 'none', 
+              borderRadius: '8px', 
+              cursor: 'pointer',
+              background: valveState ? '#2ecc71' : '#e74c3c',
+              color: 'white'
+            }}
+          >
+            {valveState ? "OPEN" : "CLOSED"}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
+  const [valves, setValves] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const navigate = useNavigate();
 
   useEffect(() => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.role !== 'admin') {
+      navigate('/');
+      return;
+    }
+
     // Connect directly to Firebase Realtime Database
     const sensorRef = ref(db, 'sensorData');
+    const valvesRef = ref(db, 'valves');
     
-    const unsubscribe = onValue(sensorRef, (snapshot) => {
+    const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const newData = snapshot.val();
       if (newData) {
         setData(newData);
@@ -96,7 +128,14 @@ const Dashboard = () => {
       setErrorMsg('Firebase Error: ' + error.message);
     });
 
-    return () => unsubscribe();
+    const unsubscribeValves = onValue(valvesRef, (snapshot) => {
+      setValves(snapshot.val() || {});
+    });
+
+    return () => {
+      unsubscribeSensors();
+      unsubscribeValves();
+    };
   }, []);
 
   useEffect(() => {
@@ -129,9 +168,25 @@ const Dashboard = () => {
       </div>
 
       <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-        <NodeCard title="🏛️ Jal Board Pumping Station (Sector-12 Node)" nodeData={data.gov_node} />
-        <NodeCard title="🏠 Ramesh Kumar (House #42-B, Vasant Vihar)" nodeData={data.consumer_node} />
-        <NodeCard title="🏠 Priya Patel (House #104, Saket Enclave)" nodeData={data.consumer_node_8266} />
+        <NodeCard 
+          title="🏛️ Jal Board Pumping Station (Sector-12 Node)" 
+          nodeData={data.gov_node} 
+          hasValve={false} 
+        />
+        <NodeCard 
+          title="🏠 Ramesh Kumar (House #42-B, Vasant Vihar)" 
+          nodeData={data.consumer_node} 
+          hasValve={true} 
+          valveState={valves.consumer_node} 
+          onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
+        />
+        <NodeCard 
+          title="🏠 Priya Patel (House #104, Saket Enclave)" 
+          nodeData={data.consumer_node_8266} 
+          hasValve={true}
+          valveState={valves.consumer_node_8266}
+          onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
+        />
       </div>
     </div>
   );

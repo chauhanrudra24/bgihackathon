@@ -25,6 +25,7 @@ unsigned long sendDataPrevMillis = 0;
 // Note: ESP8266 only has ONE analog pin (A0). If using both sensors, you need an I2C ADC or multiplexer!
 #define TURBIDITY_PIN A0
 #define TDS_PIN A0 // Cannot use same pin for both without an external ADC module
+#define RELAY_PIN D1 // Relay for Solenoid Valve
 
 float turbidityThreshold = 3.15;
 
@@ -73,10 +74,23 @@ void setup() {
   // 3. Setup ADC (ESP8266 uses 10-bit ADC 0-1023, max 1.0V or 3.3V depending on board)
   // analogReadResolution(12); // NOT SUPPORTED on ESP8266
   // analogSetAttenuation(ADC_11db); // NOT SUPPORTED on ESP8266
+
+  // 4. Setup Valve Relay
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW); // Default OFF
 }
 
 void loop() {
   ArduinoOTA.handle();
+
+  // Read Valve Status instantly from Firebase (no delay needed for this)
+  if (Firebase.ready()) {
+    bool valveState = false;
+    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node_8266")) {
+      valveState = fbdo.boolData();
+      digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
+    }
+  }
 
   // Send data to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {

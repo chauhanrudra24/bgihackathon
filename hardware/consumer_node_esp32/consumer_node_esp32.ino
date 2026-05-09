@@ -24,6 +24,7 @@ unsigned long sendDataPrevMillis = 0;
 // =========================
 #define TURBIDITY_PIN 34
 #define TDS_PIN 35
+#define RELAY_PIN 14 // Relay for Solenoid Valve
 
 float turbidityThreshold = 3.15;
 
@@ -72,10 +73,23 @@ void setup() {
   // 3. Setup ADC
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
+
+  // 4. Setup Valve Relay
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW); // Default OFF
 }
 
 void loop() {
   ArduinoOTA.handle();
+
+  // Read Valve Status instantly from Firebase (no delay needed for this)
+  if (Firebase.ready()) {
+    bool valveState = false;
+    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node")) {
+      valveState = fbdo.boolData();
+      digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
+    }
+  }
 
   // Send data to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
