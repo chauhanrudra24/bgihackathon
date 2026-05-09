@@ -1,4 +1,6 @@
 #include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
 
@@ -36,6 +38,9 @@ void setup() {
   
   // wifiManager.resetSettings(); // Uncomment to wipe stored Wi-Fi credentials
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW); // LED OFF while connecting
+
   Serial.println("Connecting to Wi-Fi...");
   // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Ramesh_AP"
   if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
@@ -48,6 +53,8 @@ void setup() {
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
   Serial.println();
+
+  digitalWrite(LED_BUILTIN, HIGH); // LED ON when connected
 
   // 1.5 Setup OTA
   ArduinoOTA.setHostname("Consumer_Ramesh");

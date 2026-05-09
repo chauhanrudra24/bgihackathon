@@ -1,4 +1,6 @@
 #include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
 
@@ -37,6 +39,9 @@ void setup() {
   
   // wifiManager.resetSettings(); // Uncomment to wipe stored Wi-Fi credentials
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
+
   Serial.println("Connecting to Wi-Fi...");
   // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Priya_AP"
   if (!wifiManager.autoConnect("Consumer_Priya_AP")) {
@@ -49,6 +54,8 @@ void setup() {
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
   Serial.println();
+
+  digitalWrite(LED_BUILTIN, LOW); // LOW means ON for ESP8266
 
   // 1.5 Setup OTA
   ArduinoOTA.setHostname("Consumer_Priya");
