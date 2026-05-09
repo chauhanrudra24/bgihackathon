@@ -105,15 +105,15 @@ void loop() {
     // SEND TO FIREBASE
     // =========================
     bool success = true;
-    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/turbidityVoltage", turbidityVoltage)) {
+    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/turbidityVoltage", turbidityVoltage)) {
       success = false;
       Serial.println("Firebase Write Error (turbidity): " + fbdo.errorReason());
     }
-    if(!Firebase.RTDB.setString(&fbdo, "sensorData/waterStatus", waterStatus)) {
+    if(!Firebase.RTDB.setString(&fbdo, "sensorData/consumer_node/waterStatus", waterStatus)) {
       success = false;
       Serial.println("Firebase Write Error (status): " + fbdo.errorReason());
     }
-    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/tdsValue", tdsValue)) {
+    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/tdsValue", tdsValue)) {
       success = false;
       Serial.println("Firebase Write Error (TDS): " + fbdo.errorReason());
     }
