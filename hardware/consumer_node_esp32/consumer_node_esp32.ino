@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
 
 // Provide the token generation process info.
@@ -47,6 +48,11 @@ void setup() {
   Serial.println(WiFi.localIP());
   Serial.println();
 
+  // 1.5 Setup OTA
+  ArduinoOTA.setPassword("prince");
+  ArduinoOTA.begin();
+  Serial.println("OTA Ready");
+
   // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -69,6 +75,8 @@ void setup() {
 }
 
 void loop() {
+  ArduinoOTA.handle();
+
   // Send data to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
