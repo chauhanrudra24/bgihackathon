@@ -50,6 +50,7 @@ void setup() {
   Serial.println();
 
   // 1.5 Setup OTA
+  ArduinoOTA.setHostname("Consumer_Ramesh");
   ArduinoOTA.setPassword("prince");
   ArduinoOTA.begin();
   Serial.println("OTA Ready");

@@ -49,6 +49,7 @@ void setup() {
   Serial.println();
 
   // 1.5 Setup OTA
+  ArduinoOTA.setHostname("JalBoard_GovNode");
   ArduinoOTA.setPassword("prince");
   ArduinoOTA.begin();
   Serial.println("OTA Ready");
