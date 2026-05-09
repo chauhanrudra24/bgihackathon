@@ -129,9 +129,9 @@ const Dashboard = () => {
       </div>
 
       <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-        <NodeCard title="🏛️ Government Node (ESP32)" nodeData={data.gov_node} />
-        <NodeCard title="🏠 Consumer Node 1 (ESP32)" nodeData={data.consumer_node} />
-        <NodeCard title="🏠 Consumer Node 2 (ESP8266)" nodeData={data.consumer_node_8266} />
+        <NodeCard title="🏛️ Central Gov Reservoir (Node 1)" nodeData={data.gov_node} />
+        <NodeCard title="🏠 House 42, Smith Residence (Node 2)" nodeData={data.consumer_node} />
+        <NodeCard title="🏠 House 108, Patel Residence (Node 3)" nodeData={data.consumer_node_8266} />
       </div>
     </div>
   );
