@@ -119,7 +119,7 @@ const Dashboard = () => {
   return (
     <div className="dashboard" style={{maxWidth: "1200px"}}>
       <div className="header-flex">
-          <h1>Multi-Node Water Dashboard</h1>
+          <h1>💧 Jal Board - Real-Time Quality Dashboard</h1>
           <button onClick={handleLogout} className="logout-btn">Logout</button>
       </div>
       
@@ -129,9 +129,9 @@ const Dashboard = () => {
       </div>
 
       <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-        <NodeCard title="🏛️ Central Gov Reservoir (Node 1)" nodeData={data.gov_node} />
-        <NodeCard title="🏠 House 42, Smith Residence (Node 2)" nodeData={data.consumer_node} />
-        <NodeCard title="🏠 House 108, Patel Residence (Node 3)" nodeData={data.consumer_node_8266} />
+        <NodeCard title="🏛️ Jal Board Pumping Station (Sector-12 Node)" nodeData={data.gov_node} />
+        <NodeCard title="🏠 Ramesh Kumar (House #42-B, Vasant Vihar)" nodeData={data.consumer_node} />
+        <NodeCard title="🏠 Priya Patel (House #104, Saket Enclave)" nodeData={data.consumer_node_8266} />
       </div>
     </div>
   );
