@@ -20,19 +20,16 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 unsigned long sendDataPrevMillis = 0;
+unsigned long lastValveCheckMillis = 0;
 
 // =========================
-// SENSOR PINS
+// VALVE PIN
 // =========================
-#define TURBIDITY_PIN 34
-#define TDS_PIN 35
 #define RELAY_PIN 14 // Relay for Solenoid Valve
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
 #endif
-
-float turbidityThreshold = 3.15;
 
 void setup() {
   Serial.begin(115200);
@@ -40,13 +37,11 @@ void setup() {
   // 1. Connect to WiFi using WiFiManager
   WiFiManager wifiManager;
   
-  // wifiManager.resetSettings(); // Uncomment to wipe stored Wi-Fi credentials
-
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW); // LED OFF while connecting
 
   Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Ramesh_AP"
+  // Connects to saved Wi-Fi or sets up an Access Point
   if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
     Serial.println("Failed to connect, restarting...");
     delay(3000);
@@ -82,11 +77,7 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   
-  // 3. Setup ADC
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);
-
-  // 4. Setup Valve Relay
+  // 3. Setup Valve Relay
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW); // Default OFF
 }
@@ -94,81 +85,23 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  // Read Valve Status instantly from Firebase (no delay needed for this)
-  if (Firebase.ready()) {
-    bool valveState = false;
+  // Check Valve Status every 1 second
+  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
+    lastValveCheckMillis = millis();
     if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node")) {
-      valveState = fbdo.boolData();
+      bool valveState = fbdo.boolData();
       digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
     }
   }
 
-  // Send data to Firebase every 5 seconds (5000 milliseconds)
+  // Send Heartbeat to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
-    // =========================
-    // TURBIDITY SENSOR
-    // =========================
-    int turbidityValue = analogRead(TURBIDITY_PIN);
-    float turbidityVoltage = turbidityValue * (3.3 / 4095.0);
-
-    String waterStatus;
-    if(turbidityVoltage > turbidityThreshold) {
-      waterStatus = "CLEAR";
+    if (Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node/lastSeen")) {
+      Serial.println("Heartbeat sent to Firebase.");
+    } else {
+      Serial.println("Firebase Write Error: " + fbdo.errorReason());
     }
-    else {
-      waterStatus = "DIRTY";
-    }
-
-    // =========================
-    // TDS SENSOR
-    // =========================
-    long sum = 0;
-    for(int i = 0; i < 10; i++) {
-      sum += analogRead(TDS_PIN);
-      delay(10);
-    }
-    float avgValue = sum / 10.0;
-    float tdsVoltage = avgValue * (3.3 / 4095.0);
-    float tdsValue = (133.42 * tdsVoltage * tdsVoltage * tdsVoltage
-                    - 255.86 * tdsVoltage * tdsVoltage
-                    + 857.39 * tdsVoltage) * 0.5;
-
-    // =========================
-    // SEND TO FIREBASE
-    // =========================
-    bool success = true;
-    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/turbidityVoltage", turbidityVoltage)) {
-      success = false;
-      Serial.println("Firebase Write Error (turbidity): " + fbdo.errorReason());
-    }
-    if(!Firebase.RTDB.setString(&fbdo, "sensorData/consumer_node/waterStatus", waterStatus)) {
-      success = false;
-      Serial.println("Firebase Write Error (status): " + fbdo.errorReason());
-    }
-    if(!Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/tdsValue", tdsValue)) {
-      success = false;
-      Serial.println("Firebase Write Error (TDS): " + fbdo.errorReason());
-    }
-    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node/lastSeen");
-
-    if (success) {
-      Serial.println("==> Successfully sent to Firebase!");
-    }
-
-    // =========================
-    // PRINT TO SERIAL
-    // =========================
-    Serial.print("Turbidity Voltage: ");
-    Serial.print(turbidityVoltage);
-    Serial.print(" V (");
-    Serial.print(waterStatus);
-    Serial.println(")");
-    
-    Serial.print("TDS Value: ");
-    Serial.print(tdsValue);
-    Serial.println(" ppm");
-    Serial.println("------------------------");
   }
 }
