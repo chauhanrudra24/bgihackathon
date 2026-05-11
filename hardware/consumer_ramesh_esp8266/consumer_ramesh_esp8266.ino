@@ -37,7 +37,7 @@ unsigned long lastValveCheckMillis = 0;
 
 // 1/8" Flow Sensor calibration: ~21 pulses per litre (varies by model)
 // Adjust PULSES_PER_LITRE based on your specific sensor's datasheet
-#define PULSES_PER_LITRE 21.0
+#define PULSES_PER_LITRE 330.0
 #define FLOW_CALIBRATION 5.5  // pulses per second per L/min
 
 volatile unsigned long pulseCount = 0;
@@ -125,24 +125,31 @@ void loop() {
   // CALCULATE FLOW RATE (every 1 second)
   // =========================
   if (millis() - lastFlowCalc >= 1000) {
-    // Disable interrupt during calculation
-    detachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN));
-    
+    unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
+    
+    noInterrupts();
+    pulseCopy = pulseCount;
+    pulseCount = 0;
+    interrupts();
+    
     float elapsedSec = elapsedMs / 1000.0;
     
-    // Flow rate (L/min) = (pulseCount / calibration) / elapsed * 60
-    flowRate = (pulseCount / FLOW_CALIBRATION) / elapsedSec * 60.0;
+    // Flow rate (L/min) = Frequency (Hz) / FLOW_CALIBRATION
+    if (elapsedSec > 0) {
+      flowRate = (pulseCopy / elapsedSec) / FLOW_CALIBRATION;
+    } else {
+      flowRate = 0;
+    }
     
     // Volume in litres for this interval
-    float litresThisInterval = pulseCount / PULSES_PER_LITRE;
+    float litresThisInterval = pulseCopy / PULSES_PER_LITRE;
     totalLitres += litresThisInterval;
     
     // =========================
     // TAMPER / BYPASS DETECTION
     // =========================
-    // If the valve is CLOSED but water is still flowing, someone may have
-    // bypassed the meter or cut the pipe
+    // If the valve is CLOSED but water is still flowing
     if (!currentValveState && flowRate > 0.5) {
       tamperDetected = true;
       Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
@@ -150,11 +157,7 @@ void loop() {
       tamperDetected = false;
     }
     
-    pulseCount = 0;
     lastFlowCalc = millis();
-    
-    // Re-enable interrupt
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   }
 
   // Check Valve Status every 1 second

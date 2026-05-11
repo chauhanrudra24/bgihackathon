@@ -132,25 +132,31 @@ void loop() {
   // CALCULATE FLOW RATE (every 1 second)
   // =========================
   if (millis() - lastFlowCalc >= 1000) {
-    // Disable interrupt during calculation
-    detachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN));
-    
+    unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
+    
+    noInterrupts();
+    pulseCopy = pulseCount;
+    pulseCount = 0;
+    interrupts();
+    
     float elapsedSec = elapsedMs / 1000.0;
     
-    // YF-S201: Flow rate (L/min) = pulseCount / (7.5 * elapsed seconds)
-    flowRate = (pulseCount / 7.5) / elapsedSec * 60.0;
+    // YF-S201: Flow rate (L/min) = Frequency (Hz) / 7.5
+    // Frequency (Hz) = pulseCopy / elapsedSec
+    if (elapsedSec > 0) {
+      flowRate = (pulseCopy / elapsedSec) / 7.5;
+    } else {
+      flowRate = 0;
+    }
     
     // Volume in litres for this interval
-    float litresThisInterval = pulseCount / 450.0;
+    // YF-S201: ~450 pulses per liter
+    float litresThisInterval = pulseCopy / 450.0;
     totalLitres += litresThisInterval;
     govSupplyLitres += litresThisInterval;
     
-    pulseCount = 0;
     lastFlowCalc = millis();
-    
-    // Re-enable interrupt
-    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   }
 
   // =========================

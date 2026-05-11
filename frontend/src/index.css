@@ -786,6 +786,41 @@ h2 {
 }
 
 /* Sidebar Elements */
+.sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex-grow: 1;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nav-item.active {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.nav-item:hover:not(.active) {
+    background: var(--bg-color);
+    color: var(--text-primary);
+}
+
+.sidebar-footer {
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+}
+
 .sidebar-logo {
     display: flex;
     align-items: center;
