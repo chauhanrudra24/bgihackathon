@@ -801,36 +801,120 @@ h2 {
     -webkit-text-fill-color: transparent;
 }
 
-.sidebar-nav {
+.balance-card {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: white;
+    padding: 2rem;
+    border-radius: var(--radius-lg);
+    margin-bottom: 2rem;
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex-grow: 1;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: var(--shadow-lg);
 }
 
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.875rem 1.25rem;
+.balance-info h3 {
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.balance-value {
+    font-size: 3rem;
+    font-weight: 800;
+    margin: 0.5rem 0;
+}
+
+.recharge-btn {
+    background: white;
+    color: var(--primary);
+    border: none;
+    padding: 0.8rem 1.5rem;
     border-radius: var(--radius-md);
-    color: var(--text-secondary);
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+}
+
+.recharge-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.theft-list-container {
+    margin-top: 2rem;
+}
+
+.theft-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--danger-light);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+    margin-bottom: 1rem;
+}
+
+.theft-item-info h4 {
+    margin: 0;
+    color: var(--danger);
+}
+
+.unblock-btn {
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
     font-weight: 600;
-    text-decoration: none;
     cursor: pointer;
 }
 
-.nav-item.active {
-    background: var(--primary-light);
-    color: var(--primary);
+.payment-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
 }
 
-.nav-item:hover:not(.active) {
-    background: var(--bg-color);
-    color: var(--text-primary);
+.modal-content {
+    background: white;
+    padding: 2.5rem;
+    border-radius: var(--radius-lg);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
 }
 
-.sidebar-footer {
-    padding-top: 2rem;
-    border-top: 1px solid var(--border-color);
+.modal-content h2 {
+    margin-bottom: 1.5rem;
+}
+
+.amount-input {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.pay-btn {
+    width: 100%;
+    padding: 1rem;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    cursor: pointer;
 }
