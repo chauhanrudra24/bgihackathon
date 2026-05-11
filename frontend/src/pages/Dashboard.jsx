@@ -173,16 +173,33 @@ const NodeCard = ({ title, nodeData }) => {
 // =========================
 // CONSUMER VALVE + FLOW CARD
 // =========================
-const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId }) => {
+const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
+  const theftFlagged = account?.theftFlagged || false;
+  const balance = account?.balance ?? 500;
+  const blocked = account?.blocked || false;
 
   return (
-    <div className={`consumer-full-card ${tamper ? 'tamper-active' : ''}`} id={`consumer-card-${nodeId}`}>
+    <div className={`consumer-full-card ${tamper || theftFlagged ? 'tamper-active' : ''}`} id={`consumer-card-${nodeId}`}>
       {/* Tamper Alert */}
       {tamper && online && (
         <div className="tamper-alert">
           <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED. Possible bypass or pipe cut.
+        </div>
+      )}
+
+      {/* Theft Flag Alert */}
+      {theftFlagged && (
+        <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+          <span>🕵️ THEFT FLAGGED</span> — Supply active but no consumer flow detected. Possible bypass.
+        </div>
+      )}
+
+      {/* Zero Balance Alert */}
+      {balance <= 0 && (
+        <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+          <span>💳 ZERO BALANCE</span> — Prepaid balance exhausted. Supply auto-blocked.
         </div>
       )}
 
@@ -191,12 +208,21 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId }) =>
         <div>
           <h3>{title}</h3>
           <p className="consumer-status-text">
-            {online ? (tamper ? 'TAMPER ALERT' : 'Active') : 'Offline'}
+            {blocked || theftFlagged ? '🔒 BLOCKED' : (online ? (tamper ? 'TAMPER ALERT' : 'Active') : 'Offline')}
           </p>
         </div>
-        <span className={`status ${online ? (tamper ? 'dirty' : '') : 'offline'}`}>
-          {online ? (tamper ? '⚠ ALERT' : '● ONLINE') : 'OFFLINE'}
-        </span>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span style={{ 
+            padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700,
+            background: balance > 100 ? 'var(--success-light)' : balance > 0 ? 'var(--warning-light)' : 'var(--danger-light)',
+            color: balance > 100 ? 'var(--success)' : balance > 0 ? 'var(--warning)' : 'var(--danger)'
+          }}>
+            ₹{balance.toFixed(0)}
+          </span>
+          <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`}>
+            {online ? (tamper || theftFlagged ? '⚠ ALERT' : '● ONLINE') : 'OFFLINE'}
+          </span>
+        </div>
       </div>
 
       {/* Flow Data */}
@@ -219,10 +245,27 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId }) =>
         </div>
       )}
 
-      {/* Valve Control */}
-      <div className="consumer-card-footer">
+      {/* Valve Control + Block Toggle */}
+      <div className="consumer-card-footer" style={{ gap: '0.5rem' }}>
+        {(theftFlagged || blocked) && (
+          <button 
+            onClick={onBlockToggle}
+            className="unblock-btn"
+            style={{ marginRight: 'auto' }}
+          >
+            ✅ Verify & Unblock
+          </button>
+        )}
+        {!theftFlagged && !blocked && (
+          <button
+            onClick={onBlockToggle}
+            style={{ marginRight: 'auto', background: 'var(--danger-light)', color: 'var(--danger)', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem' }}
+          >
+            🚫 Block User
+          </button>
+        )}
         <button 
-          disabled={!online}
+          disabled={!online || theftFlagged || blocked}
           onClick={onToggleValve} 
           className={`valve-btn ${valveState ? 'open' : 'closed'}`}
         >
@@ -236,9 +279,15 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId }) =>
 // =========================
 // MAIN DASHBOARD
 // =========================
+const CONSUMER_NODES = [
+  { nodeId: 'consumer_node', name: 'Ramesh Kumar', location: 'Umaria, near BGI' },
+  { nodeId: 'consumer_node_8266', name: 'Priya Patel', location: 'Pigdamber, near BGI' },
+];
+
 const Dashboard = () => {
   const [data, setData] = useState(null);
   const [valves, setValves] = useState({});
+  const [accounts, setAccounts] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -253,6 +302,7 @@ const Dashboard = () => {
 
     const sensorRef = ref(db, 'sensorData');
     const valvesRef = ref(db, 'valves');
+    const accountsRef = ref(db, 'accounts');
     
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const newData = snapshot.val();
@@ -272,11 +322,57 @@ const Dashboard = () => {
       setValves(snapshot.val() || {});
     });
 
+    const unsubscribeAccounts = onValue(accountsRef, (snapshot) => {
+      setAccounts(snapshot.val() || {});
+    });
+
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
+      unsubscribeAccounts();
     };
   }, [navigate]);
+
+  // ===== AUTO THEFT DETECTION =====
+  // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
+  useEffect(() => {
+    if (!data) return;
+    const govNode = data.gov_node;
+    const govOnline = isNodeOnline(govNode);
+    const govFlowing = govOnline && (govNode?.flowRate || 0) > 0;
+
+    if (!govFlowing) return;
+
+    CONSUMER_NODES.forEach(({ nodeId }) => {
+      const consumerData = data[nodeId];
+      const consumerOnline = isNodeOnline(consumerData);
+      const valve = valves[nodeId];
+      const valveOpen = valve?.gov !== false && valve?.user !== false;
+      const consumerFlow = consumerData?.flowRate || 0;
+      const account = accounts[nodeId] || {};
+
+      // If gov supply is active, consumer is online, valve is open, but consumer flow is zero → flag
+      if (consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged) {
+        set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
+        set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active but no consumer flow detected');
+        set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
+        // Auto-block the consumer valve
+        set(ref(db, `valves/${nodeId}/gov`), false);
+      }
+    });
+  }, [data, valves, accounts]);
+
+  // ===== AUTO BALANCE CHECK =====
+  // If balance <= 0, auto-block supply
+  useEffect(() => {
+    CONSUMER_NODES.forEach(({ nodeId }) => {
+      const account = accounts[nodeId];
+      if (account && account.balance !== undefined && account.balance <= 0 && !account.blocked) {
+        set(ref(db, `accounts/${nodeId}/blocked`), true);
+        set(ref(db, `valves/${nodeId}/gov`), false);
+      }
+    });
+  }, [accounts]);
 
   useEffect(() => {
     if (!data) return;
@@ -292,11 +388,33 @@ const Dashboard = () => {
     navigate('/');
   };
 
+  const handleBlockToggle = (nodeId) => {
+    const account = accounts[nodeId] || {};
+    if (account.theftFlagged || account.blocked) {
+      // Unblock: clear flags and re-open valve
+      set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
+      set(ref(db, `accounts/${nodeId}/blocked`), false);
+      set(ref(db, `accounts/${nodeId}/theftReason`), null);
+      set(ref(db, `accounts/${nodeId}/theftTime`), null);
+      set(ref(db, `valves/${nodeId}/gov`), true);
+    } else {
+      // Block user manually
+      set(ref(db, `accounts/${nodeId}/blocked`), true);
+      set(ref(db, `valves/${nodeId}/gov`), false);
+    }
+  };
+
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
 
   const govNode = data.gov_node || {};
   const theftStatus = govNode.theftStatus || 'NORMAL';
+
+  // Gather flagged consumers for the theft list
+  const flaggedConsumers = CONSUMER_NODES.filter(({ nodeId }) => {
+    const acct = accounts[nodeId] || {};
+    return acct.theftFlagged || acct.blocked;
+  });
 
   const renderDashboard = () => (
     <div className="main-content">
@@ -330,25 +448,50 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Theft / Suspicious Activity List */}
+      {flaggedConsumers.length > 0 && (
+        <div className="theft-list-container">
+          <h2>🕵️ Theft / Suspicious Activity</h2>
+          {flaggedConsumers.map(({ nodeId, name, location }) => {
+            const acct = accounts[nodeId] || {};
+            return (
+              <div className="theft-item" key={nodeId}>
+                <div className="theft-item-info">
+                  <h4>🚨 {name} ({location})</h4>
+                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    {acct.theftFlagged 
+                      ? (acct.theftReason || 'Suspicious flow pattern detected')
+                      : (acct.balance <= 0 ? 'Zero balance — supply auto-blocked' : 'Manually blocked by admin')}
+                  </p>
+                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Balance: ₹{(acct.balance ?? 500).toFixed(0)} | Node: <code>{nodeId}</code>
+                  </p>
+                </div>
+                <button className="unblock-btn" onClick={() => handleBlockToggle(nodeId)}>
+                  ✅ Verify & Unblock
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Consumer Control Section */}
       <div className="node-container" style={{ marginTop: '2.5rem' }}>
         <h2>🏠 Smart Meter Management</h2>
         <div className="consumer-grid">
-          <ConsumerCard 
-            title="Ramesh Kumar (Umaria, near BGI)"
-            nodeId="consumer_node"
-            valveState={valves.consumer_node?.gov ?? true}
-            nodeData={data.consumer_node}
-            onToggleValve={() => set(ref(db, `valves/consumer_node/gov`), !(valves.consumer_node?.gov ?? true))}
-          />
-          
-          <ConsumerCard 
-            title="Priya Patel (Pigdamber, near BGI)"
-            nodeId="consumer_node_8266"
-            valveState={valves.consumer_node_8266?.gov ?? true}
-            nodeData={data.consumer_node_8266}
-            onToggleValve={() => set(ref(db, `valves/consumer_node_8266/gov`), !(valves.consumer_node_8266?.gov ?? true))}
-          />
+          {CONSUMER_NODES.map(({ nodeId, name, location }) => (
+            <ConsumerCard
+              key={nodeId}
+              title={`${name} (${location})`}
+              nodeId={nodeId}
+              valveState={valves[nodeId]?.gov ?? true}
+              nodeData={data[nodeId]}
+              account={accounts[nodeId] || { balance: 500 }}
+              onToggleValve={() => set(ref(db, `valves/${nodeId}/gov`), !(valves[nodeId]?.gov ?? true))}
+              onBlockToggle={() => handleBlockToggle(nodeId)}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -376,22 +519,32 @@ const Dashboard = () => {
                         <th style={{ padding: '1rem' }}>Name</th>
                         <th>Address</th>
                         <th>Node ID</th>
+                        <th>Balance</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '1rem' }}>Ramesh Kumar</td>
-                        <td>Umaria, near BGI</td>
-                        <td><code>consumer_node</code></td>
-                        <td><span className="status">Active</span></td>
-                    </tr>
-                    <tr>
-                        <td style={{ padding: '1rem' }}>Priya Patel</td>
-                        <td>Pigdamber, near BGI</td>
-                        <td><code>consumer_node_8266</code></td>
-                        <td><span className="status">Active</span></td>
-                    </tr>
+                    {CONSUMER_NODES.map(({ nodeId, name, location }) => {
+                      const acct = accounts[nodeId] || { balance: 500 };
+                      const flagged = acct.theftFlagged || acct.blocked;
+                      return (
+                        <tr key={nodeId} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '1rem' }}>{name}</td>
+                          <td>{location}</td>
+                          <td><code>{nodeId}</code></td>
+                          <td>
+                            <span style={{ fontWeight: 700, color: acct.balance > 100 ? 'var(--success)' : acct.balance > 0 ? 'var(--warning)' : 'var(--danger)' }}>
+                              ₹{(acct.balance ?? 500).toFixed(0)}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status ${flagged ? 'dirty' : ''}`}>
+                              {flagged ? '🔒 Blocked' : 'Active'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
             </table>
         </div>
@@ -423,7 +576,14 @@ const Dashboard = () => {
         <div className="dashboard">
           <div className="header-flex">
               <h1>🏛️ Government Control Center</h1>
-              <div className="status" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>ADMIN ACCESS</div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {flaggedConsumers.length > 0 && (
+                  <div className="status dirty" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('dashboard')}>
+                    {flaggedConsumers.length} FLAGGED
+                  </div>
+                )}
+                <div className="status" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>ADMIN ACCESS</div>
+              </div>
           </div>
           
           {/* Theft Alert Banner */}
