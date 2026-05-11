@@ -37,49 +37,51 @@ const Login = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h1>💧 Smart Water Grid</h1>
-        <p>Access the real-time monitoring and control portal</p>
-        
-        <form onSubmit={handleLogin}>
-          <div className="input-group">
-            <label>Email Address</label>
-            <input 
-              type="email" 
-              placeholder="e.g. admin@gov.in" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required 
-            />
-          </div>
+    <div className="auth-page-body">
+      <div className="auth-container">
+        <div className="auth-card">
+          <h1>💧 Smart Water Grid</h1>
+          <p>Access the real-time monitoring and control portal</p>
           
-          <div className="input-group">
-            <label>Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required 
-            />
-          </div>
-          
-          <button type="submit" className="submit-btn" disabled={isLoading}>
-            {isLoading ? 'Authenticating...' : 'Sign In to Portal'}
-          </button>
-          
-          {error && <div className="error-msg">{error}</div>}
-        </form>
-
-        <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            <div style={{ marginBottom: '1rem', padding: '0.5rem', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', textAlign: 'left' }}>
-              <strong>Demo Credentials:</strong><br />
-              Admin: <code>admin@gov.in</code> / <code>admin123</code><br />
-              Node 1: <code>ramesh@gov.in</code> / <code>ramesh123</code><br />
-              Node 2: <code>priya@gov.in</code> / <code>priya123</code>
+          <form onSubmit={handleLogin}>
+            <div className="input-group">
+              <label>Email Address</label>
+              <input 
+                type="email" 
+                placeholder="e.g. admin@gov.in" 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required 
+              />
             </div>
-            Official Jal Board Infrastructure Portal
+            
+            <div className="input-group">
+              <label>Password</label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required 
+              />
+            </div>
+            
+            <button type="submit" className="submit-btn" disabled={isLoading}>
+              {isLoading ? 'Authenticating...' : 'Sign In to Portal'}
+            </button>
+            
+            {error && <div className="error-msg">{error}</div>}
+          </form>
+
+          <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <div style={{ marginBottom: '1rem', padding: '0.5rem', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', textAlign: 'left' }}>
+                <strong>Demo Credentials:</strong><br />
+                Admin: <code>admin@gov.in</code> / <code>admin123</code><br />
+                Node 1: <code>ramesh@gov.in</code> / <code>ramesh123</code><br />
+                Node 2: <code>priya@gov.in</code> / <code>priya123</code>
+              </div>
+              Official Jal Board Infrastructure Portal
+          </div>
         </div>
       </div>
     </div>
