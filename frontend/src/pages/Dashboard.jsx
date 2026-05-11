@@ -406,7 +406,21 @@ const Dashboard = () => {
       await set(ref(db, 'sensorData/consumer_node/totalLitres'), 0);
       await set(ref(db, 'sensorData/consumer_node_8266/totalLitres'), 0);
 
-      // 3. Turn off reset flag after 2 seconds (gives hardware time to see it)
+      // 3. Reset Accounts and Valves (Unblock everyone)
+      for (const node of CONSUMER_NODES) {
+        const { nodeId } = node;
+        await set(ref(db, `accounts/${nodeId}/blocked`), false);
+        await set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
+        await set(ref(db, `accounts/${nodeId}/theftReason`), null);
+        await set(ref(db, `accounts/${nodeId}/theftTime`), null);
+        await set(ref(db, `valves/${nodeId}/gov`), true);
+        await set(ref(db, `valves/${nodeId}/user`), true); // Also reset user switch to ON
+      }
+
+      // 4. Reset Government Node Stats
+      await set(ref(db, 'sensorData/gov_node/theftStatus'), 'NORMAL');
+
+      // 5. Turn off reset flag after 3 seconds
       setTimeout(() => {
         set(ref(db, 'commands/resetAll'), false);
       }, 3000);
