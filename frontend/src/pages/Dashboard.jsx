@@ -241,6 +241,7 @@ const Dashboard = () => {
   const [valves, setValves] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
+  const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -297,6 +298,106 @@ const Dashboard = () => {
   const govNode = data.gov_node || {};
   const theftStatus = govNode.theftStatus || 'NORMAL';
 
+  const renderDashboard = () => (
+    <div className="main-content">
+      {/* Government Node - Water Quality + Flow */}
+      <NodeCard 
+        title="Sector-12 Pumping Station" 
+        nodeData={govNode} 
+      />
+
+      {/* Supply vs Consumption Summary */}
+      <div className="node-container" style={{ marginTop: '2rem' }}>
+        <h2>📊 Network Efficiency</h2>
+        <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div className="card stat-card supply">
+            <h3>Total Supply</h3>
+            <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className="status">FROM PLANT</div>
+          </div>
+          <div className="card stat-card consumption">
+            <h3>Total Consumed</h3>
+            <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className="status">BY HOMES</div>
+          </div>
+          <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
+            <h3>Unaccounted</h3>
+            <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
+              {theftStatus}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Consumer Control Section */}
+      <div className="node-container" style={{ marginTop: '2.5rem' }}>
+        <h2>🏠 Smart Meter Management</h2>
+        <div className="consumer-grid">
+          <ConsumerCard 
+            title="Ramesh Kumar (House 42-B)"
+            nodeId="consumer_node"
+            valveState={valves.consumer_node?.gov ?? true}
+            nodeData={data.consumer_node}
+            onToggleValve={() => set(ref(db, `valves/consumer_node/gov`), !(valves.consumer_node?.gov ?? true))}
+          />
+          
+          <ConsumerCard 
+            title="Priya Patel (House 104)"
+            nodeId="consumer_node_8266"
+            valveState={valves.consumer_node_8266?.gov ?? true}
+            nodeData={data.consumer_node_8266}
+            onToggleValve={() => set(ref(db, `valves/consumer_node_8266/gov`), !(valves.consumer_node_8266?.gov ?? true))}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAnalytics = () => (
+    <div className="main-content">
+      <div className="card" style={{ padding: '4rem', textAlign: 'center' }}>
+        <h2 style={{ fontSize: '2rem' }}>📈 Supply Trends</h2>
+        <p style={{ color: 'var(--text-secondary)' }}>Advanced analytics and consumption history charts will be visible here.</p>
+        <div style={{ marginTop: '2rem', height: '200px', background: 'var(--bg-color)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: 'var(--text-muted)' }}>[ Trend Analysis Placeholder ]</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderConsumers = () => (
+    <div className="main-content">
+        <h2>👥 Registered Consumers</h2>
+        <div className="card">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                        <th style={{ padding: '1rem' }}>Name</th>
+                        <th>Address</th>
+                        <th>Node ID</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '1rem' }}>Ramesh Kumar</td>
+                        <td>House 42-B, Sector 12</td>
+                        <td><code>consumer_node</code></td>
+                        <td><span className="status">Active</span></td>
+                    </tr>
+                    <tr>
+                        <td style={{ padding: '1rem' }}>Priya Patel</td>
+                        <td>House 104, Sector 12</td>
+                        <td><code>consumer_node_8266</code></td>
+                        <td><span className="status">Active</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+  );
+
   return (
     <div className="gov-dashboard-layout">
       {/* Sidebar for Laptop */}
@@ -307,10 +408,10 @@ const Dashboard = () => {
         </div>
         
         <nav className="sidebar-nav">
-          <div className="nav-item active">📊 Dashboard</div>
-          <div className="nav-item">📈 Analytics</div>
-          <div className="nav-item">👥 Consumers</div>
-          <div className="nav-item">⚙️ Settings</div>
+          <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</div>
+          <div className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>📈 Analytics</div>
+          <div className={`nav-item ${activeTab === 'consumers' ? 'active' : ''}`} onClick={() => setActiveTab('consumers')}>👥 Consumers</div>
+          <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>⚙️ Settings</div>
         </nav>
 
         <div className="sidebar-footer">
@@ -338,59 +439,17 @@ const Dashboard = () => {
               <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
           </div>
 
-          <div className="main-content">
-            {/* Government Node - Water Quality + Flow */}
-            <NodeCard 
-              title="Sector-12 Pumping Station" 
-              nodeData={govNode} 
-            />
-
-            {/* Supply vs Consumption Summary */}
-            <div className="node-container" style={{ marginTop: '2rem' }}>
-              <h2>📊 Network Efficiency</h2>
-              <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                <div className="card stat-card supply">
-                  <h3>Total Supply</h3>
-                  <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
-                  <div className="status">FROM PLANT</div>
+          {activeTab === 'dashboard' && renderDashboard()}
+          {activeTab === 'analytics' && renderAnalytics()}
+          {activeTab === 'consumers' && renderConsumers()}
+          {activeTab === 'settings' && (
+            <div className="main-content">
+                <div className="card">
+                    <h2>⚙️ System Settings</h2>
+                    <p style={{ color: 'var(--text-secondary)' }}>Global thresholds and node configurations.</p>
                 </div>
-                <div className="card stat-card consumption">
-                  <h3>Total Consumed</h3>
-                  <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
-                  <div className="status">BY HOMES</div>
-                </div>
-                <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
-                  <h3>Unaccounted</h3>
-                  <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
-                  <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
-                    {theftStatus}
-                  </div>
-                </div>
-              </div>
             </div>
-
-            {/* Consumer Control Section */}
-            <div className="node-container" style={{ marginTop: '2.5rem' }}>
-              <h2>🏠 Smart Meter Management</h2>
-              <div className="consumer-grid">
-                <ConsumerCard 
-                  title="Ramesh Kumar (House 42-B)"
-                  nodeId="consumer_node"
-                  valveState={valves.consumer_node}
-                  nodeData={data.consumer_node}
-                  onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
-                />
-                
-                <ConsumerCard 
-                  title="Priya Patel (House 104)"
-                  nodeId="consumer_node_8266"
-                  valveState={valves.consumer_node_8266}
-                  nodeData={data.consumer_node_8266}
-                  onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
-                />
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </main>
     </div>
