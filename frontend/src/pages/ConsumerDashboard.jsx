@@ -8,7 +8,7 @@ const ConsumerDashboard = () => {
   const [myNodeData, setMyNodeData] = useState(null);
   const [valveData, setValveData] = useState({ gov: true, user: true });
   const [account, setAccount] = useState({ balance: 500 });
-  const [ratePerLitre, setRatePerLitre] = useState(0.05);
+  const [ratePerLitre, setRatePerLitre] = useState(0.5);
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
@@ -68,7 +68,7 @@ const ConsumerDashboard = () => {
     });
 
     // Listen for admin-set water rate
-    const settingsRef = ref(db, 'settings/ratePerLitre');
+    const settingsRef = ref(db, 'settings/pricePerLiter');
     const unsubscribeSettings = onValue(settingsRef, (snapshot) => {
       const rate = snapshot.val();
       if (rate && rate > 0) setRatePerLitre(rate);
