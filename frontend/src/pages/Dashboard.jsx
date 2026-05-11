@@ -26,40 +26,51 @@ const NodeCard = ({ title, nodeData }) => {
     );
   }
 
-  const tds = nodeData.tdsValue || 0;
-  let tdsQuality = "GOOD";
-  let tdsClass = "status";
+  const tdsConnected = nodeData.tdsConnected !== false;
+  const tds = tdsConnected ? (nodeData.tdsValue || 0) : 0;
+  let tdsQuality = tdsConnected ? "GOOD" : "NOT CONNECTED";
+  let tdsClass = tdsConnected ? "status" : "status offline";
 
-  if (tds <= 50) tdsQuality = "EXCELLENT";
-  else if (tds <= 150) tdsQuality = "IDEAL";
-  else if (tds <= 300) tdsQuality = "GOOD";
-  else if (tds <= 500) {
-      tdsQuality = "FAIR";
-      tdsClass = "status warning";
-  } else {
-      tdsQuality = "POOR";
-      tdsClass = "status dirty";
+  if (tdsConnected) {
+    if (tds <= 50) tdsQuality = "EXCELLENT";
+    else if (tds <= 150) tdsQuality = "IDEAL";
+    else if (tds <= 300) tdsQuality = "GOOD";
+    else if (tds <= 500) {
+        tdsQuality = "FAIR";
+        tdsClass = "status warning";
+    } else {
+        tdsQuality = "POOR";
+        tdsClass = "status dirty";
+    }
   }
 
-  const turbVoltage = nodeData.turbidityVoltage || 0;
-  const turbClass = nodeData.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
+  const turbConnected = nodeData.turbidityConnected !== false;
+  const turbVoltage = turbConnected ? (nodeData.turbidityVoltage || 0) : 0;
+  const turbStatus = turbConnected ? (nodeData.waterStatus || "UNKNOWN") : "NOT CONNECTED";
+  
+  let turbClass = "status";
+  if (!turbConnected) turbClass = "status offline";
+  else if (nodeData.waterStatus === 'DIRTY') turbClass = "status dirty";
 
   let finalQuality = "ACCEPTABLE";
   let finalClass = "status";
 
-  if (nodeData.waterStatus === 'DIRTY') {
-      finalQuality = "UNSAFE (DIRTY)";
-      finalClass = "status dirty";
+  if (!turbConnected || !tdsConnected) {
+    finalQuality = "SENSOR ERROR";
+    finalClass = "status warning";
+  } else if (nodeData.waterStatus === 'DIRTY') {
+    finalQuality = "UNSAFE (DIRTY)";
+    finalClass = "status dirty";
   } else {
-      if (tds <= 150) finalQuality = "ULTRA-PURE";
-      else if (tds <= 300) finalQuality = "GOOD QUALITY";
-      else if (tds <= 500) {
-          finalQuality = "MINERAL HEAVY";
-          finalClass = "status warning";
-      } else {
-          finalQuality = "UNACCEPTABLE";
-          finalClass = "status dirty";
-      }
+    if (tds <= 150) finalQuality = "ULTRA-PURE";
+    else if (tds <= 300) finalQuality = "GOOD QUALITY";
+    else if (tds <= 500) {
+        finalQuality = "MINERAL HEAVY";
+        finalClass = "status warning";
+    } else {
+        finalQuality = "UNACCEPTABLE";
+        finalClass = "status dirty";
+    }
   }
 
   return (
@@ -72,20 +83,26 @@ const NodeCard = ({ title, nodeData }) => {
       <div className="nodes-grid">
         <div className="card">
             <h3>TDS Level</h3>
-            <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
+            <div className="value">
+              {tdsConnected ? tds.toFixed(2) : "--"}
+              <span className="unit">ppm</span>
+            </div>
             <div className={tdsClass}>{tdsQuality}</div>
         </div>
         
         <div className="card">
             <h3>Turbidity</h3>
-            <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
-            <div className={turbClass}>{nodeData.waterStatus || "UNKNOWN"}</div>
+            <div className="value">
+              {turbConnected ? turbVoltage.toFixed(2) : "--"}
+              <span className="unit">V</span>
+            </div>
+            <div className={turbClass}>{turbStatus}</div>
         </div>
 
         <div className="card">
             <h3>Overall Quality</h3>
             <div className="value" style={{ fontSize: '1.5rem', margin: '0.75rem 0' }}>{finalQuality}</div>
-            <div className={finalClass}>VERIFIED</div>
+            <div className={finalClass}>{(!turbConnected || !tdsConnected) ? "CHECK SENSORS" : "VERIFIED"}</div>
         </div>
       </div>
     </div>
