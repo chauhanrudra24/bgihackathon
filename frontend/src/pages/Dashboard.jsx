@@ -8,6 +8,58 @@ const isNodeOnline = (nodeData) => {
   return (Date.now() - nodeData.lastSeen) < 20000;
 };
 
+// =========================
+// THEFT ALERT BANNER
+// =========================
+const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference }) => {
+  if (theftStatus === 'NORMAL' || !theftStatus) return null;
+
+  const isAlert = theftStatus === 'ALERT';
+  
+  return (
+    <div className={`theft-banner ${isAlert ? 'alert' : 'suspicious'}`} id="theft-alert-banner">
+      <div className="theft-banner-icon">{isAlert ? '🚨' : '⚠️'}</div>
+      <div className="theft-banner-content">
+        <h3>{isAlert ? 'THEFT ALERT: Major Water Loss Detected!' : 'SUSPICIOUS: Minor Flow Discrepancy'}</h3>
+        <p>
+          Gov Supply: <strong>{govSupply?.toFixed(2) || 0} L</strong> |
+          Consumer Total: <strong>{consumerTotal?.toFixed(2) || 0} L</strong> |
+          Unaccounted: <strong>{difference?.toFixed(2) || 0} L</strong>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// =========================
+// FLOW METER CARD
+// =========================
+const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
+  return (
+    <div className="card flow-card" id={`flow-card-${label}`}>
+      <h3>💧 {label}</h3>
+      <div className="flow-meter-display">
+        <div className="flow-gauge">
+          <div className="flow-value-large">{(flowRate || 0).toFixed(1)}</div>
+          <div className="flow-unit">L/min</div>
+        </div>
+        <div className="flow-total">
+          <div className="flow-total-value">{(totalLitres || 0).toFixed(2)}</div>
+          <div className="flow-total-label">Total Litres</div>
+        </div>
+      </div>
+      {flowRate > 0 && (
+        <div className="flow-active-indicator">
+          <span className="flow-dot"></span> Water Flowing
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =========================
+// SENSOR NODE CARD (Gov Node)
+// =========================
 const NodeCard = ({ title, nodeData }) => {
   const online = isNodeOnline(nodeData);
 
@@ -105,30 +157,85 @@ const NodeCard = ({ title, nodeData }) => {
             <div className={finalClass}>{(!turbConnected || !tdsConnected) ? "CHECK SENSORS" : "VERIFIED"}</div>
         </div>
       </div>
+
+      {/* Flow Meter for Gov Node */}
+      <div style={{ marginTop: '1.5rem' }}>
+        <FlowMeterCard 
+          flowRate={nodeData.flowRate} 
+          totalLitres={nodeData.totalLitres} 
+          label="Main Supply Flow (YF-S201)"
+        />
+      </div>
     </div>
   );
 };
 
-const ValveControlCard = ({ title, valveState, onToggleValve, nodeData }) => {
+// =========================
+// CONSUMER VALVE + FLOW CARD
+// =========================
+const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId }) => {
   const online = isNodeOnline(nodeData);
+  const tamper = nodeData?.tamperDetected || false;
 
   return (
-    <div className="valve-card" style={{ opacity: online ? 1 : 0.6 }}>
-      <div className="valve-info">
-        <h3>{title}</h3>
-        <p>{online ? 'Government Override Active' : 'Node Offline - Control Disabled'}</p>
+    <div className={`consumer-full-card ${tamper ? 'tamper-active' : ''}`} id={`consumer-card-${nodeId}`}>
+      {/* Tamper Alert */}
+      {tamper && online && (
+        <div className="tamper-alert">
+          <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED. Possible bypass or pipe cut.
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="consumer-card-header">
+        <div>
+          <h3>{title}</h3>
+          <p className="consumer-status-text">
+            {online ? (tamper ? 'TAMPER ALERT' : 'Active') : 'Offline'}
+          </p>
+        </div>
+        <span className={`status ${online ? (tamper ? 'dirty' : '') : 'offline'}`}>
+          {online ? (tamper ? '⚠ ALERT' : '● ONLINE') : 'OFFLINE'}
+        </span>
       </div>
-      <button 
-        disabled={!online}
-        onClick={onToggleValve} 
-        className={`valve-btn ${valveState ? 'open' : 'closed'}`}
-      >
-        {valveState ? "OPEN" : "CLOSED"}
-      </button>
+
+      {/* Flow Data */}
+      {online && (
+        <div className="consumer-flow-row">
+          <div className="consumer-flow-item">
+            <span className="consumer-flow-label">Flow Rate</span>
+            <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(1)} <small>L/min</small></span>
+          </div>
+          <div className="consumer-flow-item">
+            <span className="consumer-flow-label">Total Usage</span>
+            <span className="consumer-flow-value">{(nodeData?.totalLitres || 0).toFixed(2)} <small>L</small></span>
+          </div>
+          <div className="consumer-flow-item">
+            <span className="consumer-flow-label">Valve</span>
+            <span className={`consumer-flow-value ${valveState ? 'valve-open' : 'valve-closed'}`}>
+              {valveState ? '🟢 OPEN' : '🔴 CLOSED'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Valve Control */}
+      <div className="consumer-card-footer">
+        <button 
+          disabled={!online}
+          onClick={onToggleValve} 
+          className={`valve-btn ${valveState ? 'open' : 'closed'}`}
+        >
+          {valveState ? "CLOSE VALVE" : "OPEN VALVE"}
+        </button>
+      </div>
     </div>
   );
 };
 
+// =========================
+// MAIN DASHBOARD
+// =========================
 const Dashboard = () => {
   const [data, setData] = useState(null);
   const [valves, setValves] = useState({});
@@ -187,6 +294,9 @@ const Dashboard = () => {
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
 
+  const govNode = data.gov_node || {};
+  const theftStatus = govNode.theftStatus || 'NORMAL';
+
   return (
     <div className="dashboard-container">
       <div className="dashboard">
@@ -195,29 +305,65 @@ const Dashboard = () => {
             <button onClick={handleLogout} className="logout-btn">Logout</button>
         </div>
         
+        {/* Theft Alert Banner */}
+        <TheftAlertBanner 
+          theftStatus={theftStatus}
+          govSupply={govNode.govSupplyLitres}
+          consumerTotal={govNode.consumerTotalLitres}
+          difference={govNode.flowDifference}
+        />
+
         <div className="update-timer">
             {countdown > 0 ? `Live data sync in ` : ''} 
             <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
         </div>
 
         <div className="main-content">
+          {/* Government Node - Water Quality + Flow */}
           <NodeCard 
             title="🏛️ Sector-12 Pumping Station" 
-            nodeData={data.gov_node} 
+            nodeData={govNode} 
           />
 
-          <div className="node-container" style={{ marginTop: '3rem' }}>
-            <h2>🏠 Consumer Supply Control</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1rem' }}>
-              <ValveControlCard 
+          {/* Supply vs Consumption Summary */}
+          <div className="node-container" style={{ marginTop: '2rem' }}>
+            <h2>📊 Supply vs Consumption Analysis</h2>
+            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+              <div className="card stat-card supply">
+                <h3>Total Supply</h3>
+                <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+                <div className="status">FROM PLANT</div>
+              </div>
+              <div className="card stat-card consumption">
+                <h3>Total Consumed</h3>
+                <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+                <div className="status">BY HOMES</div>
+              </div>
+              <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
+                <h3>Unaccounted</h3>
+                <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
+                <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
+                  {theftStatus}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Consumer Control Section */}
+          <div className="node-container" style={{ marginTop: '2.5rem' }}>
+            <h2>🏠 Consumer Supply Control & Monitoring</h2>
+            <div className="consumer-grid">
+              <ConsumerCard 
                 title="Ramesh Kumar (House 42-B)"
+                nodeId="consumer_node"
                 valveState={valves.consumer_node}
                 nodeData={data.consumer_node}
                 onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
               />
               
-              <ValveControlCard 
+              <ConsumerCard 
                 title="Priya Patel (House 104)"
+                nodeId="consumer_node_8266"
                 valveState={valves.consumer_node_8266}
                 nodeData={data.consumer_node_8266}
                 onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}

@@ -5,7 +5,7 @@ import { db } from '../firebase';
 
 const ConsumerDashboard = () => {
   const [govData, setGovData] = useState(null);
-  const [lastSeen, setLastSeen] = useState(null);
+  const [myNodeData, setMyNodeData] = useState(null);
   const [valveState, setValveState] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
@@ -37,8 +37,8 @@ const ConsumerDashboard = () => {
 
     const unsubscribeMyNode = onValue(myNodeRef, (snapshot) => {
       const myData = snapshot.val();
-      if (myData && myData.lastSeen) {
-        setLastSeen(myData.lastSeen);
+      if (myData) {
+        setMyNodeData(myData);
       }
     });
 
@@ -75,8 +75,10 @@ const ConsumerDashboard = () => {
     return (Date.now() - timestamp) < 20000;
   };
 
-  const myNodeOnline = isNodeOnline(lastSeen);
+  const myNodeOnline = isNodeOnline(myNodeData?.lastSeen);
+  const tamperDetected = myNodeData?.tamperDetected || false;
 
+  // Water quality from gov node
   const renderQualityCard = (sensorData, title) => {
     const online = isNodeOnline(sensorData?.lastSeen);
 
@@ -95,28 +97,39 @@ const ConsumerDashboard = () => {
       );
     }
 
-    const tds = sensorData.tdsValue || 0;
-    let tdsQuality = "GOOD";
-    let tdsClass = "status";
+    const tdsConnected = sensorData.tdsConnected !== false;
+    const tds = tdsConnected ? (sensorData.tdsValue || 0) : 0;
+    let tdsQuality = tdsConnected ? "GOOD" : "NOT CONNECTED";
+    let tdsClass = tdsConnected ? "status" : "status offline";
 
-    if (tds <= 50) tdsQuality = "EXCELLENT";
-    else if (tds <= 150) tdsQuality = "IDEAL";
-    else if (tds <= 300) tdsQuality = "GOOD";
-    else if (tds <= 500) {
-        tdsQuality = "FAIR";
-        tdsClass = "status warning";
-    } else {
-        tdsQuality = "POOR";
-        tdsClass = "status dirty";
+    if (tdsConnected) {
+      if (tds <= 50) tdsQuality = "EXCELLENT";
+      else if (tds <= 150) tdsQuality = "IDEAL";
+      else if (tds <= 300) tdsQuality = "GOOD";
+      else if (tds <= 500) {
+          tdsQuality = "FAIR";
+          tdsClass = "status warning";
+      } else {
+          tdsQuality = "POOR";
+          tdsClass = "status dirty";
+      }
     }
 
-    const turbVoltage = sensorData.turbidityVoltage || 0;
-    const turbClass = sensorData.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
+    const turbConnected = sensorData.turbidityConnected !== false;
+    const turbVoltage = turbConnected ? (sensorData.turbidityVoltage || 0) : 0;
+    const turbStatus = turbConnected ? (sensorData.waterStatus || "UNKNOWN") : "NOT CONNECTED";
+    
+    let turbClass = "status";
+    if (!turbConnected) turbClass = "status offline";
+    else if (sensorData.waterStatus === 'DIRTY') turbClass = "status dirty";
 
     let finalQuality = "ACCEPTABLE";
     let finalClass = "status";
 
-    if (sensorData.waterStatus === 'DIRTY') {
+    if (!turbConnected || !tdsConnected) {
+      finalQuality = "SENSOR ERROR";
+      finalClass = "status warning";
+    } else if (sensorData.waterStatus === 'DIRTY') {
         finalQuality = "UNSAFE (DIRTY)";
         finalClass = "status dirty";
     } else {
@@ -140,25 +153,33 @@ const ConsumerDashboard = () => {
         <div className="nodes-grid">
           <div className="card">
               <h3>TDS Level</h3>
-              <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
+              <div className="value">
+                {tdsConnected ? tds.toFixed(2) : "--"}
+                <span className="unit">ppm</span>
+              </div>
               <div className={tdsClass}>{tdsQuality}</div>
           </div>
           
           <div className="card">
               <h3>Turbidity</h3>
-              <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
-              <div className={turbClass}>{sensorData.waterStatus || "UNKNOWN"}</div>
+              <div className="value">
+                {turbConnected ? turbVoltage.toFixed(2) : "--"}
+                <span className="unit">V</span>
+              </div>
+              <div className={turbClass}>{turbStatus}</div>
           </div>
 
           <div className="card">
               <h3>Overall Quality</h3>
               <div className="value" style={{ fontSize: '1.4rem', margin: '0.75rem 0' }}>{finalQuality}</div>
-              <div className={finalClass}>VERIFIED</div>
+              <div className={finalClass}>{(!turbConnected || !tdsConnected) ? "CHECK SENSORS" : "VERIFIED"}</div>
           </div>
         </div>
       </div>
     );
   };
+
+  if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
 
   return (
     <div className="dashboard-container">
@@ -172,20 +193,91 @@ const ConsumerDashboard = () => {
             Next update in <span>{countdown}s</span>
         </div>
 
-        <div className="valve-card" style={{ marginBottom: '2.5rem', opacity: myNodeOnline ? 1 : 0.6 }}>
-            <div className="valve-info">
-              <h3>🏠 Main Water Valve</h3>
-              <p>{myNodeOnline ? 'Active Control' : 'Hardware Offline - Control Unavailable'}</p>
+        {/* Tamper Alert Banner */}
+        {tamperDetected && myNodeOnline && (
+          <div className="theft-banner alert" style={{ marginBottom: '2rem' }}>
+            <div className="theft-banner-icon">🚨</div>
+            <div className="theft-banner-content">
+              <h3>TAMPER ALERT: Unauthorized Flow Detected!</h3>
+              <p>Water is flowing through your meter while the valve is <strong>CLOSED</strong>. Possible bypass or pipe cut detected. Contact authorities immediately.</p>
             </div>
-            <button 
-              disabled={!myNodeOnline}
-              onClick={toggleValve} 
-              className={`valve-btn ${valveState ? 'open' : 'closed'}`}
-            >
-              {valveState ? "OPEN" : "CLOSED"}
-            </button>
+          </div>
+        )}
+
+        {/* My Home Section */}
+        <div className="node-container" style={{ marginBottom: '2.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
+            <h2>🏠 My Home Water System</h2>
+            <span className={`status ${myNodeOnline ? (tamperDetected ? 'dirty' : '') : 'offline'}`}>
+              {myNodeOnline ? (tamperDetected ? '⚠ TAMPER' : '● ONLINE') : 'OFFLINE'}
+            </span>
+          </div>
+          
+          {/* Valve Control */}
+          <div className="valve-card" style={{ marginBottom: '1.5rem', opacity: myNodeOnline ? 1 : 0.6 }}>
+              <div className="valve-info">
+                <h3>🚰 Main Water Valve</h3>
+                <p>{myNodeOnline ? 'Active Control' : 'Hardware Offline - Control Unavailable'}</p>
+              </div>
+              <button 
+                disabled={!myNodeOnline}
+                onClick={toggleValve} 
+                className={`valve-btn ${valveState ? 'open' : 'closed'}`}
+              >
+                {valveState ? "OPEN" : "CLOSED"}
+              </button>
+          </div>
+
+          {/* Flow Data Cards */}
+          {myNodeOnline && (
+            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+              <div className="card">
+                <h3>💧 Current Flow</h3>
+                <div className="value">
+                  {(myNodeData?.flowRate || 0).toFixed(1)}
+                  <span className="unit">L/min</span>
+                </div>
+                {myNodeData?.flowRate > 0 ? (
+                  <div className="flow-active-indicator">
+                    <span className="flow-dot"></span> Water Flowing
+                  </div>
+                ) : (
+                  <div className="status offline">No Flow</div>
+                )}
+              </div>
+
+              <div className="card">
+                <h3>📊 Total Usage</h3>
+                <div className="value">
+                  {(myNodeData?.totalLitres || 0).toFixed(2)}
+                  <span className="unit">L</span>
+                </div>
+                <div className="status">SINCE BOOT</div>
+              </div>
+
+              <div className="card">
+                <h3>🔒 Security</h3>
+                <div className="value" style={{ fontSize: '1.5rem', margin: '0.75rem 0' }}>
+                  {tamperDetected ? 'TAMPER' : 'SECURE'}
+                </div>
+                <div className={`status ${tamperDetected ? 'dirty' : ''}`}>
+                  {tamperDetected ? '⚠ CHECK PIPES' : '✓ ALL CLEAR'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!myNodeOnline && (
+            <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
+              <h2 style={{ color: 'var(--warning)', margin: 0 }}>🔌 Home Node Offline</h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
+                Waiting for your home ESP device to connect...
+              </p>
+            </div>
+          )}
         </div>
 
+        {/* Gov Water Quality Info */}
         {renderQualityCard(govData, "🏛️ Gov Water Supply Info")}
       </div>
     </div>

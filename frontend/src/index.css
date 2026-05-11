@@ -23,6 +23,8 @@
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-full: 9999px;
+  --flow-blue: #0ea5e9;
+  --flow-blue-light: #e0f2fe;
 }
 
 * {
@@ -49,7 +51,7 @@ body {
 /* Layout Containers */
 .dashboard-container {
     width: 100%;
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -165,7 +167,7 @@ h2 {
 
 .nodes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1.5rem;
 }
 
@@ -201,6 +203,7 @@ h2 {
     border: none;
     cursor: pointer;
     box-shadow: var(--shadow-sm);
+    font-family: 'Outfit', sans-serif;
 }
 
 .valve-btn.open {
@@ -213,9 +216,299 @@ h2 {
     color: white;
 }
 
-.valve-btn:hover {
+.valve-btn:hover:not(:disabled) {
     opacity: 0.9;
     transform: scale(1.05);
+}
+
+.valve-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ================================== */
+/* THEFT / TAMPER ALERT BANNER        */
+/* ================================== */
+.theft-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: var(--radius-md);
+    margin-bottom: 2rem;
+    animation: alertPulse 2s ease-in-out infinite;
+}
+
+.theft-banner.alert {
+    background: linear-gradient(135deg, #fef2f2, #fee2e2);
+    border: 2px solid var(--danger);
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+}
+
+.theft-banner.suspicious {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 2px solid var(--warning);
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
+}
+
+.theft-banner-icon {
+    font-size: 2rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.theft-banner-content h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.theft-banner-content p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.theft-banner-content strong {
+    color: var(--text-primary);
+}
+
+@keyframes alertPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+
+/* ================================== */
+/* FLOW METER CARD                    */
+/* ================================== */
+.flow-card {
+    background: linear-gradient(135deg, var(--flow-blue-light), #ffffff);
+    border-color: var(--flow-blue);
+}
+
+.flow-card:hover {
+    border-color: var(--flow-blue);
+}
+
+.flow-card h3 {
+    color: var(--flow-blue);
+}
+
+.flow-meter-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin: 1rem 0;
+}
+
+.flow-gauge {
+    text-align: center;
+}
+
+.flow-value-large {
+    font-size: 3rem;
+    font-weight: 800;
+    color: var(--flow-blue);
+    line-height: 1;
+}
+
+.flow-unit {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.flow-total {
+    text-align: right;
+}
+
+.flow-total-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.flow-total-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.flow-active-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 1rem;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--flow-blue-light);
+    color: var(--flow-blue);
+    margin-top: 0.5rem;
+}
+
+.flow-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--flow-blue);
+    animation: flowPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes flowPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* ================================== */
+/* CONSUMER FULL CARD                 */
+/* ================================== */
+.consumer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.consumer-full-card {
+    background: var(--surface-color);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.consumer-full-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.consumer-full-card.tamper-active {
+    border-color: var(--danger);
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
+}
+
+.tamper-alert {
+    background: linear-gradient(135deg, var(--danger), #dc2626);
+    color: white;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    animation: alertPulse 2s ease-in-out infinite;
+}
+
+.tamper-alert span {
+    font-weight: 800;
+}
+
+.consumer-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.consumer-card-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.consumer-status-text {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.consumer-flow-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.consumer-flow-item {
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    border-right: 1px solid var(--border-color);
+}
+
+.consumer-flow-item:last-child {
+    border-right: none;
+}
+
+.consumer-flow-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.consumer-flow-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.consumer-flow-value small {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.consumer-flow-value.valve-open {
+    color: var(--success);
+}
+
+.consumer-flow-value.valve-closed {
+    color: var(--danger);
+}
+
+.consumer-card-footer {
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* ================================== */
+/* STAT CARDS (Supply vs Consumption) */
+/* ================================== */
+.stat-card.supply {
+    border-left: 4px solid var(--flow-blue);
+}
+
+.stat-card.consumption {
+    border-left: 4px solid var(--success);
+}
+
+.stat-card.loss-ok {
+    border-left: 4px solid var(--success);
+}
+
+.stat-card.loss-warn {
+    border-left: 4px solid var(--warning);
+    background: var(--warning-light);
+}
+
+.stat-card.loss-alert {
+    border-left: 4px solid var(--danger);
+    background: var(--danger-light);
+    animation: alertPulse 2s ease-in-out infinite;
 }
 
 /* Buttons */
@@ -228,6 +521,7 @@ h2 {
     font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
+    font-family: 'Outfit', sans-serif;
 }
 
 .logout-btn:hover {
@@ -295,6 +589,7 @@ h2 {
     font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
+    font-family: 'Outfit', sans-serif;
 }
 
 .submit-btn:hover {
@@ -316,6 +611,7 @@ h2 {
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--text-secondary);
+    z-index: 100;
 }
 
 .update-timer span {
@@ -339,13 +635,45 @@ h2 {
     100% { transform: scale(1); opacity: 1; }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
     .dashboard {
         padding: 1.5rem;
     }
     .header-flex {
         flex-direction: column;
         gap: 1rem;
+        text-align: center;
+    }
+    .nodes-grid {
+        grid-template-columns: 1fr;
+    }
+    .consumer-grid {
+        grid-template-columns: 1fr;
+    }
+    .consumer-flow-row {
+        grid-template-columns: 1fr;
+    }
+    .consumer-flow-item {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .consumer-flow-item:last-child {
+        border-bottom: none;
+    }
+    .flow-meter-display {
+        flex-direction: column;
+        text-align: center;
+    }
+    .flow-total {
+        text-align: center;
+    }
+    .valve-card {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    .theft-banner {
+        flex-direction: column;
         text-align: center;
     }
 }

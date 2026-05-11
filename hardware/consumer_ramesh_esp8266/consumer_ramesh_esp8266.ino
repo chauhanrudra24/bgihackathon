@@ -30,8 +30,36 @@ unsigned long lastValveCheckMillis = 0;
 #define RELAY_ON LOW   // Change to HIGH if your relay is Active-HIGH
 #define RELAY_OFF HIGH // Change to LOW if your relay is Active-HIGH
 
+// =========================
+// FLOW SENSOR (1/8 inch)
+// =========================
+#define FLOW_SENSOR_PIN D5  // 1/8" Flow Sensor Signal Pin
+
+// 1/8" Flow Sensor calibration: ~21 pulses per litre (varies by model)
+// Adjust PULSES_PER_LITRE based on your specific sensor's datasheet
+#define PULSES_PER_LITRE 21.0
+#define FLOW_CALIBRATION 5.5  // pulses per second per L/min
+
+volatile unsigned long pulseCount = 0;
+float flowRate = 0.0;        // L/min
+float totalLitres = 0.0;     // Total litres since boot
+unsigned long lastFlowCalc = 0;
+
+// Tamper detection - if valve is CLOSED but flow is detected
+bool tamperDetected = false;
+bool currentValveState = false;
+
+// ISR for flow sensor
+void ICACHE_RAM_ATTR flowPulseISR() {
+  pulseCount++;
+}
+
 void setup() {
   Serial.begin(115200);
+  delay(500);
+  Serial.println("\n\n====================================");
+  Serial.println("Consumer Ramesh Node Starting...");
+  Serial.println("====================================\n");
   
   // 1. Connect to WiFi using WiFiManager
   WiFi.mode(WIFI_STA);
@@ -80,35 +108,86 @@ void setup() {
   // 3. Setup Valve Relay
   pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN); // Using Open-Drain for 5V relays
   digitalWrite(RELAY_PIN, RELAY_OFF); // Default OFF
+
+  // 4. Setup Flow Sensor
+  pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
+  lastFlowCalc = millis();
+
+  Serial.println("Flow Sensor (1/8 inch) initialized on D5");
+  Serial.println("Setup complete!\n");
 }
 
 void loop() {
   ArduinoOTA.handle();
+
+  // =========================
+  // CALCULATE FLOW RATE (every 1 second)
+  // =========================
+  if (millis() - lastFlowCalc >= 1000) {
+    // Disable interrupt during calculation
+    detachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN));
+    
+    unsigned long elapsedMs = millis() - lastFlowCalc;
+    float elapsedSec = elapsedMs / 1000.0;
+    
+    // Flow rate (L/min) = (pulseCount / calibration) / elapsed * 60
+    flowRate = (pulseCount / FLOW_CALIBRATION) / elapsedSec * 60.0;
+    
+    // Volume in litres for this interval
+    float litresThisInterval = pulseCount / PULSES_PER_LITRE;
+    totalLitres += litresThisInterval;
+    
+    // =========================
+    // TAMPER / BYPASS DETECTION
+    // =========================
+    // If the valve is CLOSED but water is still flowing, someone may have
+    // bypassed the meter or cut the pipe
+    if (!currentValveState && flowRate > 0.5) {
+      tamperDetected = true;
+      Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
+    } else if (currentValveState || flowRate < 0.1) {
+      tamperDetected = false;
+    }
+    
+    pulseCount = 0;
+    lastFlowCalc = millis();
+    
+    // Re-enable interrupt
+    attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
+  }
 
   // Check Valve Status every 1 second
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
     // Using Ramesh's path: "valves/consumer_node"
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node")) {
-      bool valveState = fbdo1.boolData();
-      digitalWrite(RELAY_PIN, valveState ? RELAY_ON : RELAY_OFF);
-      Serial.printf("Valve state read from Firebase: %s (Relay PIN is %s)\n", 
-          valveState ? "OPEN" : "CLOSED", 
-          valveState ? (RELAY_ON == LOW ? "LOW" : "HIGH") : (RELAY_OFF == LOW ? "LOW" : "HIGH"));
+      currentValveState = fbdo1.boolData();
+      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+      Serial.printf("Valve state: %s\n", currentValveState ? "OPEN" : "CLOSED");
     } else {
-      Serial.println("Valve read error (or doesn't exist yet): " + fbdo1.errorReason());
+      Serial.println("Valve read error: " + fbdo1.errorReason());
     }
   }
 
-  // Send Heartbeat to Firebase every 5 seconds (5000 milliseconds)
+  // Send data to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
-    // Using Ramesh's path: "sensorData/consumer_node/lastSeen"
-    if (Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen")) {
-      Serial.println("Heartbeat sent to Firebase.");
-    } else {
-      Serial.println("Firebase Write Error: " + fbdo2.errorReason());
-    }
+    // Using Ramesh's path: "sensorData/consumer_node/"
+    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate", flowRate);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres", totalLitres);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected", tamperDetected);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState", currentValveState);
+    
+    Serial.print("Flow Rate: ");
+    Serial.print(flowRate);
+    Serial.print(" L/min | Total: ");
+    Serial.print(totalLitres);
+    Serial.print(" L | Tamper: ");
+    Serial.println(tamperDetected ? "YES" : "No");
+    Serial.println("Heartbeat sent to Firebase.");
+    Serial.println("------------------------");
   }
 }
