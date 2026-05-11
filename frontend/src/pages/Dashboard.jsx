@@ -279,14 +279,32 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 // =========================
 // SETTINGS VIEW
 // =========================
-const SettingsView = ({ settingsData }) => {
-  const [localPrice, setLocalPrice] = useState(settingsData?.pricePerLiter || 0.5);
-  const [localGovCal, setLocalGovCal] = useState(settingsData?.govCalibration || 7.5);
-  const [localConsCal, setLocalConsCal] = useState(settingsData?.consumerCalibration || 98.0);
+const SettingsView = () => {
+  const [settings, setSettings] = useState(null);
+  const [localPrice, setLocalPrice] = useState(0.5);
+  const [localGovCal, setLocalGovCal] = useState(7.5);
+  const [localConsCal, setLocalConsCal] = useState(98.0);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // Listen for settings changes in Firebase
+  useEffect(() => {
+    const settingsRef = ref(db, 'settings');
+    const unsubscribe = onValue(settingsRef, (snapshot) => {
+      const s = snapshot.val();
+      if (s) {
+        setSettings(s);
+        setLocalPrice(s.pricePerLiter ?? 0.5);
+        setLocalGovCal(s.govCalibration ?? 7.5);
+        setLocalConsCal(s.consumerCalibration ?? 98.0);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
+    setSaved(false);
     try {
       await set(ref(db, 'settings'), {
         pricePerLiter: parseFloat(localPrice),
@@ -294,9 +312,10 @@ const SettingsView = ({ settingsData }) => {
         consumerCalibration: parseFloat(localConsCal),
         updatedAt: Date.now()
       });
-      alert("✅ Settings saved and pushed to all nodes!");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      alert("❌ Failed to save settings.");
+      alert("❌ Failed to save settings: " + err.message);
     }
     setSaving(false);
   };
@@ -307,11 +326,19 @@ const SettingsView = ({ settingsData }) => {
             <h2>⚙️ System Configuration</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Configure global pricing and calibrate IoT flow sensors remotely.</p>
             
+            {/* Current saved values indicator */}
+            {settings && (
+              <div style={{ background: 'var(--primary-light)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--primary)' }}>
+                <strong>🔥 Live from Firebase:</strong> Rate: ₹{settings.pricePerLiter}/L | Gov Cal: {settings.govCalibration} | Consumer Cal: {settings.consumerCalibration}
+                {settings.updatedAt && <span style={{ opacity: 0.7 }}> | Last saved: {new Date(settings.updatedAt).toLocaleString()}</span>}
+              </div>
+            )}
+
             <div className="settings-grid">
               <div className="input-group">
-                <label>💰 Water Price (per Liter)</label>
+                <label>💰 Water Price (₹ per Liter)</label>
                 <input type="number" step="0.01" value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
-                <small>Used for billing calculations across the network.</small>
+                <small>Used for billing calculations across the network. Consumer dashboards update instantly.</small>
               </div>
 
               <div className="input-group">
@@ -327,8 +354,27 @@ const SettingsView = ({ settingsData }) => {
               </div>
             </div>
 
-            <button disabled={saving} onClick={handleSave} className="submit-btn" style={{ marginTop: '2rem', maxWidth: '200px' }}>
-              {saving ? 'Saving...' : '💾 Save Settings'}
+            {/* Quick price presets */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Quick Rate Presets:</p>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {[0.25, 0.50, 1.00, 2.00, 5.00].map(r => (
+                  <button key={r} onClick={() => setLocalPrice(r)}
+                    style={{ 
+                      padding: '0.4rem 0.8rem', 
+                      border: parseFloat(localPrice) === r ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)', 
+                      background: parseFloat(localPrice) === r ? 'var(--primary-light)' : 'white',
+                      fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem'
+                    }}>
+                    ₹{r}/L
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button disabled={saving} onClick={handleSave} className="submit-btn" style={{ marginTop: '2rem', maxWidth: '250px' }}>
+              {saving ? 'Saving to Firebase...' : saved ? '✅ Saved Successfully!' : '💾 Save Settings'}
             </button>
         </div>
     </div>
@@ -701,7 +747,7 @@ const Dashboard = () => {
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'consumers' && renderConsumers()}
-          {activeTab === 'settings' && <SettingsView settingsData={data.settings} />}
+          {activeTab === 'settings' && <SettingsView />}
         </div>
       </main>
     </div>
