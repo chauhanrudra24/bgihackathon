@@ -278,7 +278,7 @@ const ConsumerDashboard = () => {
         </div>
 
         {/* Gov Water Quality Info */}
-        {renderQualityCard(govData, "🏛️ Gov Water Supply Info")}
+        {renderQualityCard(govData, "🏛️ Rau Pumping Station (BGI Indore Area)")}
       </div>
     </div>
   );

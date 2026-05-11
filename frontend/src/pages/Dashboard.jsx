@@ -321,7 +321,7 @@ const Dashboard = () => {
         <div className="main-content">
           {/* Government Node - Water Quality + Flow */}
           <NodeCard 
-            title="🏛️ Sector-12 Pumping Station" 
+            title="🏛️ Rau Pumping Station (BGI Indore Area)" 
             nodeData={govNode} 
           />
 
@@ -354,7 +354,7 @@ const Dashboard = () => {
             <h2>🏠 Consumer Supply Control & Monitoring</h2>
             <div className="consumer-grid">
               <ConsumerCard 
-                title="Ramesh Kumar (House 42-B)"
+                title="Ramesh Kumar (Umaria, near BGI)"
                 nodeId="consumer_node"
                 valveState={valves.consumer_node}
                 nodeData={data.consumer_node}
@@ -362,7 +362,7 @@ const Dashboard = () => {
               />
               
               <ConsumerCard 
-                title="Priya Patel (House 104)"
+                title="Priya Patel (Pigdamber, near BGI)"
                 nodeId="consumer_node_8266"
                 valveState={valves.consumer_node_8266}
                 nodeData={data.consumer_node_8266}
