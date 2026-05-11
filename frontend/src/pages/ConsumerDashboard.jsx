@@ -3,16 +3,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ref, onValue, set } from 'firebase/database';
 import { db } from '../firebase';
 
-// ===========================
-// WATER RATE: ₹0.05 per litre
-// ===========================
-const RATE_PER_LITRE = 0.05;
-
 const ConsumerDashboard = () => {
   const [govData, setGovData] = useState(null);
   const [myNodeData, setMyNodeData] = useState(null);
   const [valveData, setValveData] = useState({ gov: true, user: true });
   const [account, setAccount] = useState({ balance: 500 });
+  const [ratePerLitre, setRatePerLitre] = useState(0.05);
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
@@ -71,11 +67,19 @@ const ConsumerDashboard = () => {
       }
     });
 
+    // Listen for admin-set water rate
+    const settingsRef = ref(db, 'settings/ratePerLitre');
+    const unsubscribeSettings = onValue(settingsRef, (snapshot) => {
+      const rate = snapshot.val();
+      if (rate && rate > 0) setRatePerLitre(rate);
+    });
+
     return () => {
       unsubscribeGovSensor();
       unsubscribeMyNode();
       unsubscribeValve();
       unsubscribeAccount();
+      unsubscribeSettings();
     };
   }, [nodeId, navigate, user.role, user.nodeId]);
 
@@ -87,7 +91,7 @@ const ConsumerDashboard = () => {
     
     if (prevLitres !== null && currentLitres > prevLitres) {
       const litresUsed = currentLitres - prevLitres;
-      const cost = litresUsed * RATE_PER_LITRE;
+      const cost = litresUsed * ratePerLitre;
       const newBalance = Math.max(0, account.balance - cost);
       
       if (newBalance !== account.balance) {
@@ -288,7 +292,7 @@ const ConsumerDashboard = () => {
             <h3>💳 Prepaid Water Balance</h3>
             <div className="balance-value">₹{balance.toFixed(2)}</div>
             <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
-              Rate: ₹{RATE_PER_LITRE}/litre | Usage: {(myNodeData?.totalLitres || 0).toFixed(1)}L
+              Rate: ₹{ratePerLitre}/litre | Usage: {(myNodeData?.totalLitres || 0).toFixed(1)}L
             </p>
           </div>
           <button className="recharge-btn" onClick={() => setShowRechargeModal(true)}>
@@ -404,7 +408,7 @@ const ConsumerDashboard = () => {
               <div className="card">
                 <h3>Est. Cost</h3>
                 <div className="value" style={{ fontSize: '1.8rem' }}>
-                  ₹{((myNodeData?.totalLitres || 0) * RATE_PER_LITRE).toFixed(2)}
+                  ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
                 </div>
                 <div className="status" style={{ fontSize: '0.6rem' }}>THIS SESSION</div>
               </div>

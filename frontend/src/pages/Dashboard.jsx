@@ -288,6 +288,8 @@ const Dashboard = () => {
   const [data, setData] = useState(null);
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
+  const [settings, setSettings] = useState({ ratePerLitre: 0.05 });
+  const [editRate, setEditRate] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -326,10 +328,17 @@ const Dashboard = () => {
       setAccounts(snapshot.val() || {});
     });
 
+    const settingsRef = ref(db, 'settings');
+    const unsubscribeSettings = onValue(settingsRef, (snapshot) => {
+      const s = snapshot.val();
+      if (s) setSettings(s);
+    });
+
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
       unsubscribeAccounts();
+      unsubscribeSettings();
     };
   }, [navigate]);
 
@@ -632,7 +641,57 @@ const Dashboard = () => {
             <div className="main-content">
                 <div className="card">
                     <h2>⚙️ System Settings</h2>
-                    <p style={{ color: 'var(--text-secondary)' }}>Global thresholds and node configurations.</p>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Global thresholds and node configurations.</p>
+                    
+                    {/* Water Rate Setting */}
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                      <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>💰 Water Rate (₹ per Litre)</h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 1rem' }}>This rate is used to calculate consumer billing. Changes apply instantly to all consumer dashboards.</p>
+                      
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div style={{ background: 'var(--primary-light)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', fontWeight: 700, color: 'var(--primary)', fontSize: '1.25rem' }}>
+                          Current: ₹{settings.ratePerLitre}/L
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            min="0.01"
+                            placeholder="New rate (₹)"
+                            value={editRate}
+                            onChange={(e) => setEditRate(e.target.value)}
+                            style={{ padding: '0.6rem 1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', width: '140px', fontSize: '1rem', fontFamily: 'inherit' }}
+                          />
+                          <button 
+                            onClick={() => {
+                              const newRate = parseFloat(editRate);
+                              if (newRate && newRate > 0) {
+                                set(ref(db, 'settings/ratePerLitre'), newRate);
+                                setEditRate('');
+                              }
+                            }}
+                            disabled={!editRate || parseFloat(editRate) <= 0}
+                            style={{ padding: '0.6rem 1.25rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: !editRate ? 0.5 : 1 }}
+                          >
+                            Update Rate
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                        {[0.03, 0.05, 0.10, 0.15, 0.25].map(r => (
+                          <button key={r} onClick={() => set(ref(db, 'settings/ratePerLitre'), r)}
+                            style={{ 
+                              padding: '0.4rem 0.8rem', border: settings.ratePerLitre === r ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                              borderRadius: 'var(--radius-md)', background: settings.ratePerLitre === r ? 'var(--primary-light)' : 'white',
+                              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem'
+                            }}>
+                            ₹{r}/L
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                 </div>
             </div>
           )}
