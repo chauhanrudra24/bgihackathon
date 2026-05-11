@@ -575,6 +575,26 @@ h2 {
     color: white;
 }
 
+.reset-btn {
+    background: var(--warning-light);
+    color: var(--warning);
+    border: 1px solid var(--warning);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    font-family: 'Outfit', sans-serif;
+}
+
+.reset-btn:hover {
+    background: var(--warning);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
 /* Auth Pages */
 .auth-container {
     width: 100%;

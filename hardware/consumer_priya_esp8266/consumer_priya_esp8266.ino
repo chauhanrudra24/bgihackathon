@@ -37,8 +37,8 @@ unsigned long lastValveCheckMillis = 0;
 #define FLOW_SENSOR_PIN D5  // 1/8" Flow Sensor Signal Pin
 
 // 1/8" Flow Sensor calibration: ~21 pulses per litre (varies by model)
-#define PULSES_PER_LITRE 330.0
-#define FLOW_CALIBRATION 5.5  // pulses per second per L/min
+#define PULSES_PER_LITRE 5880.0
+#define FLOW_CALIBRATION 98.0  // pulses per second per L/min (Standard for YF-S401 / small G1/8)
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min
@@ -137,20 +137,30 @@ void loop() {
     
     // Flow rate (L/min) = Frequency (Hz) / FLOW_CALIBRATION
     if (elapsedSec > 0) {
-      flowRate = (pulseCopy / elapsedSec) / FLOW_CALIBRATION;
+      float rawFlow = (pulseCopy / elapsedSec) / FLOW_CALIBRATION;
+      
+      // Noise Filter for small sensor: Max ~5 L/min
+      if (rawFlow > 10.0) {
+        flowRate = 0;
+      } else {
+        flowRate = rawFlow;
+      }
     } else {
       flowRate = 0;
     }
     
     // Volume in litres for this interval
     float litresThisInterval = pulseCopy / PULSES_PER_LITRE;
-    totalLitres += litresThisInterval;
+    
+    if (flowRate > 0) {
+      totalLitres += litresThisInterval;
+    }
     
     // =========================
     // TAMPER / BYPASS DETECTION
     // =========================
     // If the valve is CLOSED but water is still flowing
-    if (!currentValveState && flowRate > 0.5) {
+    if (!currentValveState && flowRate > 0.3) { // Lower threshold for small sensor
       tamperDetected = true;
       Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
     } else if (currentValveState || flowRate < 0.1) {
@@ -158,6 +168,22 @@ void loop() {
     }
     
     lastFlowCalc = millis();
+  }
+
+  // =========================
+  // RESET COMMAND LISTENER
+  // =========================
+  static unsigned long lastResetCheck = 0;
+  if (Firebase.ready() && (millis() - lastResetCheck > 2500)) {
+    lastResetCheck = millis();
+    if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
+      if (fbdo1.boolData()) {
+        Serial.println("🔄 RESET COMMAND RECEIVED! Clearing totals...");
+        totalLitres = 0;
+        pulseCount = 0;
+        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/totalLitres", 0);
+      }
+    }
   }
 
   // Check Valve Status every 1 second

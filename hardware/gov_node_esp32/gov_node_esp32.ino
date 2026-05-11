@@ -132,6 +132,9 @@ void loop() {
   // =========================
   // CALCULATE FLOW RATE (every 1 second)
   // =========================
+  // =========================
+  // CALCULATE FLOW RATE (every 1 second)
+  // =========================
   if (millis() - lastFlowCalc >= 1000) {
     unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
@@ -144,9 +147,17 @@ void loop() {
     float elapsedSec = elapsedMs / 1000.0;
     
     // YF-S201: Flow rate (L/min) = Frequency (Hz) / 7.5
-    // Frequency (Hz) = pulseCopy / elapsedSec
     if (elapsedSec > 0) {
-      flowRate = (pulseCopy / elapsedSec) / 7.5;
+      float hz = pulseCopy / elapsedSec;
+      float rawFlow = hz / 7.5;
+      
+      // Noise Filter: Max possible for YF-S201 is ~30 L/min
+      // If we see a huge spike, it's likely electrical noise
+      if (rawFlow > 40.0) {
+        flowRate = 0; // Ignore noise
+      } else {
+        flowRate = rawFlow;
+      }
     } else {
       flowRate = 0;
     }
@@ -154,10 +165,33 @@ void loop() {
     // Volume in litres for this interval
     // YF-S201: ~450 pulses per liter
     float litresThisInterval = pulseCopy / 450.0;
-    totalLitres += litresThisInterval;
-    govSupplyLitres += litresThisInterval;
+    
+    // Safety check for volume too
+    if (flowRate > 0) {
+      totalLitres += litresThisInterval;
+      govSupplyLitres += litresThisInterval;
+    }
     
     lastFlowCalc = millis();
+  }
+
+  // =========================
+  // RESET COMMAND LISTENER
+  // =========================
+  static unsigned long lastResetCheck = 0;
+  if (Firebase.ready() && (millis() - lastResetCheck > 2000)) {
+    lastResetCheck = millis();
+    if (Firebase.RTDB.getBool(&fbdo, "commands/resetAll")) {
+      if (fbdo.boolData()) {
+        Serial.println("🔄 RESET COMMAND RECEIVED! Starting fresh...");
+        totalLitres = 0;
+        govSupplyLitres = 0;
+        pulseCount = 0;
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
+        // Note: We don't reset the flag here, the dashboard or a master node should
+      }
+    }
   }
 
   // =========================

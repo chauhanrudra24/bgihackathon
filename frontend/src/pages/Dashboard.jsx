@@ -388,6 +388,36 @@ const Dashboard = () => {
     navigate('/');
   };
 
+  const handleResetAllData = async () => {
+    if (!window.confirm("⚠️ Are you sure you want to RESET ALL DATA? This will set all total litres to zero across all nodes and start fresh.")) {
+      return;
+    }
+
+    try {
+      // 1. Send reset command to hardware
+      await set(ref(db, 'commands/resetAll'), true);
+      
+      // 2. Clear totals in RTDB immediately for snappy UI
+      await set(ref(db, 'sensorData/gov_node/totalLitres'), 0);
+      await set(ref(db, 'sensorData/gov_node/govSupplyLitres'), 0);
+      await set(ref(db, 'sensorData/gov_node/consumerTotalLitres'), 0);
+      await set(ref(db, 'sensorData/gov_node/flowDifference'), 0);
+      
+      await set(ref(db, 'sensorData/consumer_node/totalLitres'), 0);
+      await set(ref(db, 'sensorData/consumer_node_8266/totalLitres'), 0);
+
+      // 3. Turn off reset flag after 2 seconds (gives hardware time to see it)
+      setTimeout(() => {
+        set(ref(db, 'commands/resetAll'), false);
+      }, 3000);
+
+      alert("✅ Reset command sent. System starting fresh!");
+    } catch (err) {
+      console.error("Reset failed:", err);
+      alert("❌ Reset failed. Check console.");
+    }
+  };
+
   const handleBlockToggle = (nodeId) => {
     const account = accounts[nodeId] || {};
     if (account.theftFlagged || account.blocked) {
@@ -576,12 +606,8 @@ const Dashboard = () => {
         <div className="dashboard">
           <div className="header-flex">
               <h1>🏛️ Government Control Center</h1>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                {flaggedConsumers.length > 0 && (
-                  <div className="status dirty" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('dashboard')}>
-                    {flaggedConsumers.length} FLAGGED
-                  </div>
-                )}
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <button onClick={handleResetAllData} className="reset-btn">🔄 Reset All Data</button>
                 <div className="status" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>ADMIN ACCESS</div>
               </div>
           </div>
