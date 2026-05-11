@@ -159,13 +159,27 @@ void loop() {
   // Check Valve Status every 1 second
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266")) {
-      currentValveState = fbdo1.boolData();
-      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-      Serial.printf("Valve state: %s\n", currentValveState ? "OPEN" : "CLOSED");
-    } else {
-      Serial.println("Valve read error: " + fbdo1.errorReason());
+    
+    bool govState = true;
+    bool userState = true;
+    
+    // Read Gov Master Switch
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/gov")) {
+      govState = fbdo1.boolData();
     }
+    
+    // Read User Switch
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/user")) {
+      userState = fbdo1.boolData();
+    }
+    
+    currentValveState = govState && userState;
+    digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+    
+    Serial.printf("Valve: [Gov: %s | User: %s] -> Final: %s\n", 
+                  govState ? "ON" : "OFF", 
+                  userState ? "ON" : "OFF", 
+                  currentValveState ? "OPEN" : "CLOSED");
   }
 
   // Send data to Firebase every 5 seconds (5000 milliseconds)
