@@ -78,12 +78,11 @@ body {
 @media (min-width: 1024px) {
     .gov-dashboard-layout {
         display: grid;
-        grid-template-columns: 300px 1fr;
-        gap: 2rem;
-        padding: 2rem;
+        grid-template-columns: 280px 1fr;
+        gap: 2.5rem;
+        padding: 2.5rem;
         width: 100%;
-        max-width: 1600px;
-        margin: 0 auto;
+        margin: 0;
     }
 
     .sidebar {
