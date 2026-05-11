@@ -502,24 +502,32 @@ const Dashboard = () => {
       // 1. Send reset command to hardware
       await set(ref(db, 'commands/resetAll'), true);
       
-      // 2. Clear totals in RTDB immediately for snappy UI
+      // 2. Clear totals and flow rates in RTDB immediately for snappy UI
       await set(ref(db, 'sensorData/gov_node/totalLitres'), 0);
+      await set(ref(db, 'sensorData/gov_node/flowRate'), 0);
       await set(ref(db, 'sensorData/gov_node/govSupplyLitres'), 0);
       await set(ref(db, 'sensorData/gov_node/consumerTotalLitres'), 0);
       await set(ref(db, 'sensorData/gov_node/flowDifference'), 0);
       
       await set(ref(db, 'sensorData/consumer_node/totalLitres'), 0);
+      await set(ref(db, 'sensorData/consumer_node/flowRate'), 0);
       await set(ref(db, 'sensorData/consumer_node_8266/totalLitres'), 0);
+      await set(ref(db, 'sensorData/consumer_node_8266/flowRate'), 0);
 
-      // 3. Reset Accounts and Valves (Unblock everyone)
+      // 3. Reset Accounts (Balance to 500) and Valves (Unblock everyone)
       for (const node of CONSUMER_NODES) {
         const { nodeId } = node;
-        await set(ref(db, `accounts/${nodeId}/blocked`), false);
-        await set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
-        await set(ref(db, `accounts/${nodeId}/theftReason`), null);
-        await set(ref(db, `accounts/${nodeId}/theftTime`), null);
-        await set(ref(db, `valves/${nodeId}/gov`), true);
-        await set(ref(db, `valves/${nodeId}/user`), true); // Also reset user switch to ON
+        await set(ref(db, `accounts/${nodeId}`), {
+          balance: 500,
+          blocked: false,
+          theftFlagged: false,
+          theftReason: null,
+          theftTime: null
+        });
+        await set(ref(db, `valves/${nodeId}`), {
+          gov: true,
+          user: true
+        });
       }
 
       // 4. Reset Government Node Stats

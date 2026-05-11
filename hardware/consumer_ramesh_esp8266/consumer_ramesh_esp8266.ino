@@ -182,18 +182,18 @@ void loop() {
     lastFlowCalc = millis();
   }
 
-  // =========================
   // RESET COMMAND LISTENER
-  // =========================
   static unsigned long lastResetCheck = 0;
-  if (Firebase.ready() && (millis() - lastResetCheck > 2500)) {
+  if (Firebase.ready() && (millis() - lastResetCheck > 1000)) {
     lastResetCheck = millis();
     if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
       if (fbdo1.boolData()) {
         Serial.println("🔄 RESET COMMAND RECEIVED! Clearing totals...");
         totalLitres = 0;
+        flowRate = 0;
         pulseCount = 0;
         Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/flowRate", 0);
       }
     }
   }

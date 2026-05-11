@@ -103,6 +103,9 @@ const ConsumerDashboard = () => {
         set(ref(db, `accounts/${nodeId}/blocked`), true);
         set(ref(db, `valves/${nodeId}/gov`), false);
       }
+    } else if (prevLitres !== null && currentLitres < prevLitres) {
+      // System reset detected: Sync prevLitres to current (0) without billing
+      console.log("Reset detected, syncing billing baseline.");
     }
     
     setPrevLitres(currentLitres);

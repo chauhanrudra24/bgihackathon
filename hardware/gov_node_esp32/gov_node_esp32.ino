@@ -186,19 +186,19 @@ void loop() {
     lastFlowCalc = millis();
   }
 
-  // =========================
   // RESET COMMAND LISTENER
-  // =========================
   static unsigned long lastResetCheck = 0;
-  if (Firebase.ready() && (millis() - lastResetCheck > 2000)) {
+  if (Firebase.ready() && (millis() - lastResetCheck > 1000)) {
     lastResetCheck = millis();
     if (Firebase.RTDB.getBool(&fbdo, "commands/resetAll")) {
       if (fbdo.boolData()) {
         Serial.println("🔄 RESET COMMAND RECEIVED! Starting fresh...");
         totalLitres = 0;
         govSupplyLitres = 0;
+        flowRate = 0;
         pulseCount = 0;
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowRate", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
         // Note: We don't reset the flag here, the dashboard or a master node should
       }
