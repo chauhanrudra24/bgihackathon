@@ -14,76 +14,79 @@ const NodeCard = ({ title, nodeData }) => {
   if (!online) {
     return (
       <div className="node-container">
-        <h2 style={{color: '#fff', marginBottom: '15px'}}>{title}</h2>
-        <div className="card" style={{borderLeftColor: '#f59e0b', textAlign: 'center', padding: '40px 20px'}}>
-          <h2 style={{color: '#f59e0b', margin: 0}}>🔌 Node Disconnected</h2>
-          <p style={{opacity: 0.7, marginBottom: 0}}>Waiting for ESP to power on and connect to Wi-Fi...</p>
+        <h2>{title}</h2>
+        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+          <div className="status offline" style={{ marginBottom: '1rem' }}>Disconnected</div>
+          <h2 style={{ color: 'var(--warning)', margin: '1rem 0' }}>🔌 Node Offline</h2>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: '300px', margin: '0 auto' }}>
+            Waiting for ESP to power on and connect to Wi-Fi...
+          </p>
         </div>
       </div>
     );
   }
 
   const tds = nodeData.tdsValue || 0;
-  let tdsQuality = "";
+  let tdsQuality = "GOOD";
   let tdsClass = "status";
 
-  if (tds <= 50) {
-      tdsQuality = "EXCELLENT";
-  } else if (tds <= 150) {
-      tdsQuality = "IDEAL";
-  } else if (tds <= 300) {
-      tdsQuality = "GOOD";
-  } else if (tds <= 500) {
+  if (tds <= 50) tdsQuality = "EXCELLENT";
+  else if (tds <= 150) tdsQuality = "IDEAL";
+  else if (tds <= 300) tdsQuality = "GOOD";
+  else if (tds <= 500) {
       tdsQuality = "FAIR";
       tdsClass = "status warning";
   } else {
-      tdsQuality = "POOR / UNACCEPTABLE";
+      tdsQuality = "POOR";
       tdsClass = "status dirty";
   }
 
   const turbVoltage = nodeData.turbidityVoltage || 0;
   const turbClass = nodeData.waterStatus === 'CLEAR' ? 'status' : 'status dirty';
 
-  let finalQuality = "";
+  let finalQuality = "ACCEPTABLE";
   let finalClass = "status";
 
   if (nodeData.waterStatus === 'DIRTY') {
-      finalQuality = "UNSAFE (DIRTY WATER)";
+      finalQuality = "UNSAFE (DIRTY)";
       finalClass = "status dirty";
   } else {
-      if (tds <= 50) {
-          finalQuality = "ULTRA-PURE";
-      } else if (tds <= 150) {
-          finalQuality = "IDEAL (BEST TASTE)";
-      } else if (tds <= 300) {
-          finalQuality = "GOOD / ACCEPTABLE";
-      } else if (tds <= 500) {
-          finalQuality = "FAIR (MINERAL-HEAVY)";
+      if (tds <= 150) finalQuality = "ULTRA-PURE";
+      else if (tds <= 300) finalQuality = "GOOD QUALITY";
+      else if (tds <= 500) {
+          finalQuality = "MINERAL HEAVY";
           finalClass = "status warning";
       } else {
-          finalQuality = "POOR (UNACCEPTABLE)";
+          finalQuality = "UNACCEPTABLE";
           finalClass = "status dirty";
       }
   }
 
   return (
     <div className="node-container">
-      <h2 style={{color: '#fff', marginBottom: '15px'}}>{title} <span style={{fontSize: '0.9rem', padding: '3px 10px', background: 'rgba(46, 204, 113, 0.2)', color: '#2ecc71', borderRadius: '20px', marginLeft: '10px'}}>● ONLINE</span></h2>
-      <div className="card">
-          <h3>TDS Level</h3>
-          <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
-          <div className={tdsClass}>{tdsQuality}</div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
+        <h2>{title}</h2>
+        <span className="status">● ONLINE</span>
       </div>
       
-      <div className="card">
-          <h3>Turbidity</h3>
-          <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
-          <div className={turbClass}>{nodeData.waterStatus || "UNKNOWN"}</div>
-      </div>
+      <div className="nodes-grid">
+        <div className="card">
+            <h3>TDS Level</h3>
+            <div className="value">{tds.toFixed(2)}<span className="unit">ppm</span></div>
+            <div className={tdsClass}>{tdsQuality}</div>
+        </div>
+        
+        <div className="card">
+            <h3>Turbidity</h3>
+            <div className="value">{turbVoltage.toFixed(2)}<span className="unit">V</span></div>
+            <div className={turbClass}>{nodeData.waterStatus || "UNKNOWN"}</div>
+        </div>
 
-      <div className="card final-card">
-          <h3>Overall Quality</h3>
-          <div className={finalClass} style={{fontSize: "1.2rem"}}>{finalQuality}</div>
+        <div className="card">
+            <h3>Overall Quality</h3>
+            <div className="value" style={{ fontSize: '1.5rem', margin: '0.75rem 0' }}>{finalQuality}</div>
+            <div className={finalClass}>VERIFIED</div>
+        </div>
       </div>
     </div>
   );
@@ -93,23 +96,15 @@ const ValveControlCard = ({ title, valveState, onToggleValve, nodeData }) => {
   const online = isNodeOnline(nodeData);
 
   return (
-    <div className="card" style={{ background: online ? (valveState ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)') : 'rgba(0,0,0,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px', opacity: online ? 1 : 0.6 }}>
-      <div>
-        <h3 style={{ margin: 0 }}>{title} {online ? '' : <span style={{color: '#e74c3c', fontSize: '0.8rem'}}>(Offline)</span>}</h3>
-        <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>Gov Override Control</p>
+    <div className="valve-card" style={{ opacity: online ? 1 : 0.6 }}>
+      <div className="valve-info">
+        <h3>{title}</h3>
+        <p>{online ? 'Government Override Active' : 'Node Offline - Control Disabled'}</p>
       </div>
       <button 
+        disabled={!online}
         onClick={onToggleValve} 
-        style={{
-          padding: '8px 20px', 
-          fontSize: '1rem', 
-          fontWeight: 'bold', 
-          border: 'none', 
-          borderRadius: '8px', 
-          cursor: 'pointer',
-          background: valveState ? '#2ecc71' : '#e74c3c',
-          color: 'white'
-        }}
+        className={`valve-btn ${valveState ? 'open' : 'closed'}`}
       >
         {valveState ? "OPEN" : "CLOSED"}
       </button>
@@ -156,7 +151,7 @@ const Dashboard = () => {
       unsubscribeSensors();
       unsubscribeValves();
     };
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!data) return;
@@ -173,47 +168,46 @@ const Dashboard = () => {
   };
 
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
-  if (!data) return <div className="dashboard"><h2>Waiting for ESP32/Firebase connection...</h2></div>;
+  if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
 
   return (
-    <div className="dashboard" style={{maxWidth: "1200px"}}>
-      <div className="header-flex">
-          <h1>💧 Jal Board - Real-Time Quality Dashboard</h1>
-          <button onClick={handleLogout} className="logout-btn">Logout</button>
-      </div>
-      
-      <div className="update-timer">
-          {countdown > 0 ? `Next update in: ` : ''} 
-          <span>{countdown > 0 ? `${countdown}s` : 'Updating...'}</span>
-      </div>
-
-      <div className="nodes-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '30px' }}>
+    <div className="dashboard-container">
+      <div className="dashboard">
+        <div className="header-flex">
+            <h1>💧 Jal Board Quality Monitor</h1>
+            <button onClick={handleLogout} className="logout-btn">Logout</button>
+        </div>
         
-        {/* Main Gov Water Quality */}
-        <NodeCard 
-          title="🏛️ Jal Board Pumping Station (Sector-12 Node)" 
-          nodeData={data.gov_node} 
-        />
-
-        {/* Consumer Valve Overrides */}
-        <div className="node-container">
-          <h2 style={{color: '#fff', marginBottom: '15px', marginTop: '20px'}}>🏠 Consumer Valve Controls</h2>
-          
-          <ValveControlCard 
-            title="Ramesh Kumar (House #42-B, Vasant Vihar)"
-            valveState={valves.consumer_node}
-            nodeData={data.consumer_node}
-            onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
-          />
-          
-          <ValveControlCard 
-            title="Priya Patel (House #104, Saket Enclave)"
-            valveState={valves.consumer_node_8266}
-            nodeData={data.consumer_node_8266}
-            onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
-          />
+        <div className="update-timer">
+            {countdown > 0 ? `Live data sync in ` : ''} 
+            <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
         </div>
 
+        <div className="main-content">
+          <NodeCard 
+            title="🏛️ Sector-12 Pumping Station" 
+            nodeData={data.gov_node} 
+          />
+
+          <div className="node-container" style={{ marginTop: '3rem' }}>
+            <h2>🏠 Consumer Supply Control</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1rem' }}>
+              <ValveControlCard 
+                title="Ramesh Kumar (House 42-B)"
+                valveState={valves.consumer_node}
+                nodeData={data.consumer_node}
+                onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
+              />
+              
+              <ValveControlCard 
+                title="Priya Patel (House 104)"
+                valveState={valves.consumer_node_8266}
+                nodeData={data.consumer_node_8266}
+                onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

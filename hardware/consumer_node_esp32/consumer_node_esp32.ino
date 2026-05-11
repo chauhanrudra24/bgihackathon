@@ -4,15 +4,10 @@
 #include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
 
-// Provide the token generation process info.
 #include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
 #include "addons/RTDBHelper.h"
 
 #include <WiFiManager.h>
-// =========================
-// NETWORK & FIREBASE CONFIG
-// =========================
 #include "env.h"
 
 FirebaseData fbdo1;
@@ -24,89 +19,132 @@ unsigned long sendDataPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
 
 // =========================
-// VALVE PIN
+// RELAY CONFIG
 // =========================
-#define RELAY_PIN 14 // Relay for Solenoid Valve
+#define RELAY_PIN 26
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
 #endif
 
+void relayON() {
+  // Connect pin to GND
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+}
+
+void relayOFF() {
+  // Disconnect pin (floating/open)
+  pinMode(RELAY_PIN, INPUT);
+}
+
 void setup() {
   Serial.begin(115200);
-  
-  // 1. Connect to WiFi using WiFiManager
-  WiFi.mode(WIFI_STA);
-  WiFiManager wifiManager;
-  
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW); // LED OFF while connecting
 
-  Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point
+  WiFiManager wifiManager;
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+
+  Serial.println("Connecting to WiFi...");
+
   if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
-    Serial.println("Failed to connect, restarting...");
+    Serial.println("Failed to connect");
     delay(3000);
-    ESP.restart(); // Reset and try again
+    ESP.restart();
   }
 
   Serial.println();
-  Serial.print("Connected with IP: ");
+  Serial.print("Connected IP: ");
   Serial.println(WiFi.localIP());
-  Serial.println();
 
-  digitalWrite(LED_BUILTIN, HIGH); // LED ON when connected
+  digitalWrite(LED_BUILTIN, HIGH);
 
-  // 1.5 Setup OTA
+  // =========================
+  // OTA
+  // =========================
   ArduinoOTA.setHostname("Consumer_Ramesh");
   ArduinoOTA.setPassword("prince");
   ArduinoOTA.begin();
+
   Serial.println("OTA Ready");
 
-  // 2. Initialize Firebase
+  // =========================
+  // FIREBASE
+  // =========================
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
 
-  // Sign up (Anonymous Authentication)
   if (Firebase.signUp(&config, &auth, "", "")) {
     Serial.println("Firebase sign up OK");
-  }
-  else {
-    Serial.printf("Firebase sign up failed: %s\n", config.signer.signupError.message.c_str());
+  } else {
+    Serial.printf("Firebase sign up failed: %s\n",
+                  config.signer.signupError.message.c_str());
   }
 
   config.token_status_callback = tokenStatusCallback;
+
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-  
-  // 3. Setup Valve Relay
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW); // Default OFF
+
+  // =========================
+  // RELAY INIT
+  // =========================
+  relayOFF();
 }
 
 void loop() {
+
   ArduinoOTA.handle();
 
-  // Check Valve Status every 1 second
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
+  // =========================
+  // CHECK VALVE STATUS
+  // =========================
+  if (Firebase.ready() &&
+      (millis() - lastValveCheckMillis > 1000 ||
+       lastValveCheckMillis == 0)) {
+
     lastValveCheckMillis = millis();
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node")) {
+
+    if (Firebase.RTDB.getBool(&fbdo1,
+                              "valves/consumer_node")) {
+
       bool valveState = fbdo1.boolData();
-      digitalWrite(RELAY_PIN, valveState ? HIGH : LOW);
-      Serial.printf("Valve state read from Firebase: %s\n", valveState ? "OPEN" : "CLOSED");
+
+      if (valveState) {
+        relayON();
+        Serial.println("Valve OPEN");
+      } else {
+        relayOFF();
+        Serial.println("Valve CLOSED");
+      }
+
     } else {
-      Serial.println("Valve read error (or doesn't exist yet): " + fbdo1.errorReason());
+
+      Serial.println("Valve read error: " +
+                     fbdo1.errorReason());
     }
   }
 
-  // Send Heartbeat to Firebase every 5 seconds (5000 milliseconds)
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+  // =========================
+  // HEARTBEAT
+  // =========================
+  if (Firebase.ready() &&
+      (millis() - sendDataPrevMillis > 5000 ||
+       sendDataPrevMillis == 0)) {
+
     sendDataPrevMillis = millis();
-    
-    if (Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen")) {
-      Serial.println("Heartbeat sent to Firebase.");
+
+    if (Firebase.RTDB.setTimestamp(
+            &fbdo2,
+            "sensorData/consumer_node/lastSeen")) {
+
+      Serial.println("Heartbeat sent");
+
     } else {
-      Serial.println("Firebase Write Error: " + fbdo2.errorReason());
+
+      Serial.println("Firebase Write Error: " +
+                     fbdo2.errorReason());
     }
   }
 }

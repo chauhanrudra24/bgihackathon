@@ -5,65 +5,76 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const handleLogin = (e) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
     setError('');
 
-    setTimeout(() => {
-      if (email === 'admin@gov.in' && password === 'admin123') {
-        localStorage.setItem('token', 'hardcoded-admin-token');
-        localStorage.setItem('user', JSON.stringify({ email: 'admin@gov.in', role: 'admin' }));
-        navigate('/dashboard');
-      } else if (email === 'ramesh@gov.in' && password === 'ramesh123') {
-        localStorage.setItem('token', 'hardcoded-consumer-token');
-        localStorage.setItem('user', JSON.stringify({ email: 'ramesh@gov.in', role: 'consumer', nodeId: 'consumer_node', name: 'Ramesh Kumar' }));
-        navigate('/consumer/consumer_node');
-      } else if (email === 'priya@gov.in' && password === 'priya123') {
-        localStorage.setItem('token', 'hardcoded-consumer-token');
-        localStorage.setItem('user', JSON.stringify({ email: 'priya@gov.in', role: 'consumer', nodeId: 'consumer_node_8266', name: 'Priya Patel' }));
-        navigate('/consumer/consumer_node_8266');
-      } else {
-        setError('Invalid credentials');
-      }
-      setLoading(false);
-    }, 500);
+    // Mock Login Logic
+    // In a real app, you would verify with Firebase Auth
+    if (email === 'admin@jalboard.gov.in' && password === 'admin123') {
+      const userData = { email, role: 'admin', name: 'Jal Board Admin' };
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('token', 'mock-token-admin');
+      navigate('/dashboard');
+    } else if (email === 'ramesh@gmail.com' && password === 'ramesh123') {
+      const userData = { email, role: 'consumer', name: 'Ramesh Kumar', nodeId: 'consumer_node' };
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('token', 'mock-token-ramesh');
+      navigate('/consumer/consumer_node');
+    } else if (email === 'priya@gmail.com' && password === 'priya123') {
+      const userData = { email, role: 'consumer', name: 'Priya Patel', nodeId: 'consumer_node_8266' };
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('token', 'mock-token-priya');
+      navigate('/consumer/consumer_node_8266');
+    } else {
+      setError('Invalid credentials. Please try again.');
+    }
+    setIsLoading(false);
   };
 
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>Gov Dashboard</h1>
-        <p>Please log in to access the system.</p>
+        <h1>💧 Smart Water Grid</h1>
+        <p>Access the real-time monitoring and control portal</p>
+        
         <form onSubmit={handleLogin}>
           <div className="input-group">
-            <label>Admin Email</label>
+            <label>Email Address</label>
             <input 
               type="email" 
-              required 
+              placeholder="e.g. admin@jalboard.gov.in" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@gov.in" 
+              required 
             />
           </div>
+          
           <div className="input-group">
             <label>Password</label>
             <input 
               type="password" 
-              required 
+              placeholder="••••••••" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••" 
+              required 
             />
           </div>
-          <button type="submit" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Secure Login'}
+          
+          <button type="submit" className="submit-btn" disabled={isLoading}>
+            {isLoading ? 'Authenticating...' : 'Sign In to Portal'}
           </button>
+          
+          {error && <div className="error-msg">{error}</div>}
         </form>
-        {error && <div className="error-msg">{error}</div>}
+
+        <div style={{ marginTop: '2rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Official Jal Board Infrastructure Portal
+        </div>
       </div>
     </div>
   );

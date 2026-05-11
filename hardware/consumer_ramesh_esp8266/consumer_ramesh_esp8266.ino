@@ -41,8 +41,8 @@ void setup() {
   digitalWrite(LED_BUILTIN, HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
 
   Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Priya_AP"
-  if (!wifiManager.autoConnect("Consumer_Priya_AP")) {
+  // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Ramesh_AP"
+  if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
     Serial.println("Failed to connect, restarting...");
     delay(3000);
     ESP.restart(); // Reset and try again
@@ -56,7 +56,7 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW); // LOW means ON for ESP8266
 
   // 1.5 Setup OTA
-  ArduinoOTA.setHostname("Consumer_Priya");
+  ArduinoOTA.setHostname("Consumer_Ramesh");
   ArduinoOTA.setPassword("prince");
   ArduinoOTA.begin();
   Serial.println("OTA Ready");
@@ -88,7 +88,8 @@ void loop() {
   // Check Valve Status every 1 second
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266")) {
+    // Using Ramesh's path: "valves/consumer_node"
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node")) {
       bool valveState = fbdo1.boolData();
       digitalWrite(RELAY_PIN, valveState ? RELAY_ON : RELAY_OFF);
       Serial.printf("Valve state read from Firebase: %s (Relay PIN is %s)\n", 
@@ -103,7 +104,8 @@ void loop() {
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
-    if (Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen")) {
+    // Using Ramesh's path: "sensorData/consumer_node/lastSeen"
+    if (Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen")) {
       Serial.println("Heartbeat sent to Firebase.");
     } else {
       Serial.println("Firebase Write Error: " + fbdo2.errorReason());
