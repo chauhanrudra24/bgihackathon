@@ -34,10 +34,13 @@ const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference })
 // =========================
 // FLOW METER CARD
 // =========================
-const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
-  return (
     <div className="card flow-card" id={`flow-card-${label}`}>
-      <h3>💧 {label}</h3>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <h3>💧 {label}</h3>
+        <span className="status" style={{ fontSize: '0.6rem', padding: '0.2rem 0.5rem', background: 'var(--primary-light)', color: 'var(--primary)' }}>
+          STABILIZED
+        </span>
+      </div>
       <div className="flow-meter-display">
         <div className="flow-gauge">
           <div className="flow-value-large">{(flowRate || 0).toFixed(1)}</div>
@@ -344,13 +347,13 @@ const SettingsView = () => {
               <div className="input-group">
                 <label>🏗️ Gov Node Calibration (YF-S201)</label>
                 <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
-                <small>Standard: 7.5. Increase if reading is too high.</small>
+                <small>Standard: 7.5. Increase if reading is too low. System now applies 0.15α smoothing.</small>
               </div>
-
+              
               <div className="input-group">
                 <label>🏠 Consumer Node Calibration (G1/8")</label>
                 <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
-                <small>Standard: 98.0. Calibration Hz per L/min.</small>
+                <small>Standard: 98.0. System automatically adjusts pulse-to-liter integration based on this value.</small>
               </div>
             </div>
 

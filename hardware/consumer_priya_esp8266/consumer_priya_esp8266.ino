@@ -148,12 +148,17 @@ void loop() {
       float rawFlow = hz / flowCalibration;
       
       // Noise Filter for small sensor
-      if (rawFlow > 20.0) {
+      if (rawFlow > 40.0) {
         rawFlow = 0;
       }
       
-      // Exponential Smoothing Filter (Alpha = 0.3)
-      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      // Better Smoothing Filter (Alpha = 0.15 for high stability)
+      if (pulseCopy == 0) {
+        flowRate = flowRate * 0.5; // Fast decay
+        if (flowRate < 0.05) flowRate = 0;
+      } else {
+        flowRate = (flowRate * 0.85) + (rawFlow * 0.15);
+      }
       
       if (flowRate < 0.05) flowRate = 0;
     } else {
@@ -161,9 +166,14 @@ void loop() {
     }
     
     // Volume in litres for this interval
-    float litresThisInterval = pulseCopy / PULSES_PER_LITRE;
+    // Dynamic calculation: pulses per litre = flowCalibration * 60
+    float pulsesPerLitre = flowCalibration * 60.0;
+    float litresThisInterval = 0;
+    if (pulsesPerLitre > 0) {
+      litresThisInterval = (float)pulseCopy / pulsesPerLitre;
+    }
     
-    if (flowRate > 0) {
+    if (litresThisInterval > 0) {
       totalLitres += litresThisInterval;
     }
     
