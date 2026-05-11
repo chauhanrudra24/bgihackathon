@@ -177,14 +177,16 @@ void loop() {
         rawFlow = 0; 
       }
       
-      // Better Smoothing Filter (Alpha = 0.15 for high stability)
+      // Improved Smoothing Filter
       if (pulseCopy == 0) {
-        flowRate = flowRate * 0.5; // Fast decay
-        if (flowRate < 0.05) flowRate = 0;
+        flowRate = flowRate * 0.7; // Gradual decay when no pulses
       } else {
-        flowRate = (flowRate * 0.85) + (rawFlow * 0.15); // Tighter noise filter for BGI area node (prevent ghost flow)
+        // Exponential Smoothing (Alpha = 0.3)
+        flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
-      if (flowRate < 0.2) flowRate = 0;
+      
+      // Sensitive noise floor
+      if (flowRate < 0.1) flowRate = 0;
     } else {
       flowRate = 0;
     }

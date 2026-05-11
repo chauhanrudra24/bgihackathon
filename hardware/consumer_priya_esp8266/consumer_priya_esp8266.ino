@@ -167,15 +167,16 @@ void loop() {
         rawFlow = 0;
       }
       
-      // Better Smoothing Filter (Alpha = 0.15 for high stability)
+      // Improved Smoothing Filter
       if (pulseCopy == 0) {
-        flowRate = flowRate * 0.5; // Fast decay
+        flowRate = flowRate * 0.7; // Gradual decay when no pulses
+      } else {
+        // Exponential Smoothing (Alpha = 0.3)
+        flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
-      // Exponential Smoothing Filter (Alpha = 0.3)
-      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       
-      // Tighter noise floor to stop random jumping
-      if (flowRate < 0.15) flowRate = 0;
+      // Sensitive noise floor
+      if (flowRate < 0.05) flowRate = 0;
     } else {
       flowRate = 0;
     }
