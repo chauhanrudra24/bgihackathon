@@ -302,7 +302,7 @@ const Dashboard = () => {
     <div className="main-content">
       {/* Government Node - Water Quality + Flow */}
       <NodeCard 
-        title="Sector-12 Pumping Station" 
+        title="🏛️ Rau Pumping Station (BGI Indore Area)" 
         nodeData={govNode} 
       />
 
@@ -335,7 +335,7 @@ const Dashboard = () => {
         <h2>🏠 Smart Meter Management</h2>
         <div className="consumer-grid">
           <ConsumerCard 
-            title="Ramesh Kumar (House 42-B)"
+            title="Ramesh Kumar (Umaria, near BGI)"
             nodeId="consumer_node"
             valveState={valves.consumer_node?.gov ?? true}
             nodeData={data.consumer_node}
@@ -343,7 +343,7 @@ const Dashboard = () => {
           />
           
           <ConsumerCard 
-            title="Priya Patel (House 104)"
+            title="Priya Patel (Pigdamber, near BGI)"
             nodeId="consumer_node_8266"
             valveState={valves.consumer_node_8266?.gov ?? true}
             nodeData={data.consumer_node_8266}
@@ -382,13 +382,13 @@ const Dashboard = () => {
                 <tbody>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <td style={{ padding: '1rem' }}>Ramesh Kumar</td>
-                        <td>House 42-B, Sector 12</td>
+                        <td>Umaria, near BGI</td>
                         <td><code>consumer_node</code></td>
                         <td><span className="status">Active</span></td>
                     </tr>
                     <tr>
                         <td style={{ padding: '1rem' }}>Priya Patel</td>
-                        <td>House 104, Sector 12</td>
+                        <td>Pigdamber, near BGI</td>
                         <td><code>consumer_node_8266</code></td>
                         <td><span className="status">Active</span></td>
                     </tr>

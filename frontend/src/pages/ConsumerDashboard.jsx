@@ -294,7 +294,7 @@ const ConsumerDashboard = () => {
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>🏛️ City Supply</h2>
             <span className="status" style={{ fontSize: '0.6rem' }}>LIVE QUALITY</span>
           </div>
-          {renderQualityCard(govData, "Pumping Station")}
+          {renderQualityCard(govData, "Rau Pumping Station (BGI Indore Area)")}
         </section>
 
         <div className="update-timer">
