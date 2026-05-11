@@ -172,11 +172,12 @@ void loop() {
       if (pulseCopy == 0) {
         flowRate = flowRate * 0.5; // Fast decay
         if (flowRate < 0.05) flowRate = 0;
-      } else {
-        flowRate = (flowRate * 0.85) + (rawFlow * 0.15);
       }
+      // Exponential Smoothing Filter (Alpha = 0.3)
+      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       
-      if (flowRate < 0.05) flowRate = 0;
+      // Tighter noise floor to stop random jumping
+      if (flowRate < 0.15) flowRate = 0;
     } else {
       flowRate = 0;
     }

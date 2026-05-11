@@ -182,10 +182,9 @@ void loop() {
         flowRate = flowRate * 0.5; // Fast decay
         if (flowRate < 0.05) flowRate = 0;
       } else {
-        flowRate = (flowRate * 0.85) + (rawFlow * 0.15);
+        flowRate = (flowRate * 0.85) + (rawFlow * 0.15); // Tighter noise filter for BGI area node (prevent ghost flow)
       }
-      
-      if (flowRate < 0.1) flowRate = 0;
+      if (flowRate < 0.2) flowRate = 0;
     } else {
       flowRate = 0;
     }
@@ -279,11 +278,13 @@ void loop() {
       (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
 
-    // =========================
-    // TURBIDITY SENSOR
-    // =========================
-    int turbidityValue = analogRead(TURBIDITY_PIN);
-    float turbidityVoltage = turbidityValue * (3.3 / 4095.0);
+    // TURBIDITY SENSOR (Averaged over 20 samples to stop random jumping)
+    long turbSum = 0;
+    for (int i = 0; i < 20; i++) {
+      turbSum += analogRead(TURBIDITY_PIN);
+      delay(2);
+    }
+    float turbidityVoltage = (turbSum / 20.0) * (3.3 / 4095.0);
 
     String waterStatus;
     bool turbConnected = (turbidityVoltage > 0.05); // Threshold for connection
@@ -296,12 +297,13 @@ void loop() {
       waterStatus = "DIRTY";
     }
 
-    // =========================
-    // TDS SENSOR
-    // =========================
-    long sum = 0;
-    for (int i = 0; i < 10; i++) {
-      sum += analogRead(TDS_PIN);
+    // TDS SENSOR (Averaged over 20 samples for stability)
+    long tdsSum = 0;
+    for (int i = 0; i < 20; i++) {
+      tdsSum += analogRead(TDS_PIN);
+      delay(2);
+    }
+    float averageVoltage = (tdsSum / 20.0) * (3.3 / 4095.0);
       delay(10);
     }
     float avgValue = sum / 10.0;
