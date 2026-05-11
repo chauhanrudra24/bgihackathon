@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue, set } from 'firebase/database';
-import { db } from '../firebase';
+import { ref, onValue, set, remove } from 'firebase/database';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, firestore } from '../firebase';
 
 const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
@@ -503,6 +504,23 @@ const Dashboard = () => {
     }
 
     try {
+      // 0. Store current session as "static data" in Firestore History before clearing
+      const historyData = {
+        timestamp: serverTimestamp(),
+        totalGovSupply: govNode.govSupplyLitres || 0,
+        totalConsumerUsage: govNode.consumerTotalLitres || 0,
+        unaccountedLoss: govNode.flowDifference || 0,
+        theftStatus: theftStatus,
+        nodes: CONSUMER_NODES.map(node => ({
+          nodeId: node.nodeId,
+          name: node.name,
+          totalUsage: data[node.nodeId]?.totalLitres || 0,
+          balanceAtReset: accounts[node.nodeId]?.balance || 500
+        }))
+      };
+      await addDoc(collection(firestore, "system_history"), historyData);
+      console.log("Session data archived to Firestore.");
+
       // 1. Send reset command to hardware
       await set(ref(db, 'commands/resetAll'), true);
       

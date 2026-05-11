@@ -128,9 +128,24 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  // =========================
-  // CALCULATE FLOW RATE (every 1 second)
-  // =========================
+  // 1. Check for Reset Command FIRST (most critical)
+  static unsigned long lastResetCheck = 0;
+  if (Firebase.ready() && (millis() - lastResetCheck > 800)) {
+    lastResetCheck = millis();
+    if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
+      if (fbdo1.boolData()) {
+        Serial.println("🔄 SYSTEM RESET REQUESTED...");
+        totalLitres = 0;
+        flowRate = 0;
+        pulseCount = 0;
+        // Force update RTDB immediately
+        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/flowRate", 0);
+      }
+    }
+  }
+
+  // 2. Regular flow calculations
   if (millis() - lastFlowCalc >= 1000) {
     unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
@@ -189,22 +204,6 @@ void loop() {
     }
     
     lastFlowCalc = millis();
-  }
-
-  // RESET COMMAND LISTENER
-  static unsigned long lastResetCheck = 0;
-  if (Firebase.ready() && (millis() - lastResetCheck > 1000)) {
-    lastResetCheck = millis();
-    if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
-      if (fbdo1.boolData()) {
-        Serial.println("🔄 RESET COMMAND RECEIVED! Clearing totals...");
-        totalLitres = 0;
-        flowRate = 0;
-        pulseCount = 0;
-        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/totalLitres", 0);
-        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/flowRate", 0);
-      }
-    }
   }
 
   // =========================
