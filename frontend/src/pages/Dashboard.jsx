@@ -277,6 +277,65 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 };
 
 // =========================
+// SETTINGS VIEW
+// =========================
+const SettingsView = ({ settingsData }) => {
+  const [localPrice, setLocalPrice] = useState(settingsData?.pricePerLiter || 0.5);
+  const [localGovCal, setLocalGovCal] = useState(settingsData?.govCalibration || 7.5);
+  const [localConsCal, setLocalConsCal] = useState(settingsData?.consumerCalibration || 98.0);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await set(ref(db, 'settings'), {
+        pricePerLiter: parseFloat(localPrice),
+        govCalibration: parseFloat(localGovCal),
+        consumerCalibration: parseFloat(localConsCal),
+        updatedAt: Date.now()
+      });
+      alert("✅ Settings saved and pushed to all nodes!");
+    } catch (err) {
+      alert("❌ Failed to save settings.");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="main-content">
+        <div className="card settings-card">
+            <h2>⚙️ System Configuration</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Configure global pricing and calibrate IoT flow sensors remotely.</p>
+            
+            <div className="settings-grid">
+              <div className="input-group">
+                <label>💰 Water Price (per Liter)</label>
+                <input type="number" step="0.01" value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
+                <small>Used for billing calculations across the network.</small>
+              </div>
+
+              <div className="input-group">
+                <label>🏗️ Gov Node Calibration (YF-S201)</label>
+                <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
+                <small>Standard: 7.5. Increase if reading is too high.</small>
+              </div>
+
+              <div className="input-group">
+                <label>🏠 Consumer Node Calibration (G1/8")</label>
+                <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
+                <small>Standard: 98.0. Calibration Hz per L/min.</small>
+              </div>
+            </div>
+
+            <button disabled={saving} onClick={handleSave} className="submit-btn" style={{ marginTop: '2rem', maxWidth: '200px' }}>
+              {saving ? 'Saving...' : '💾 Save Settings'}
+            </button>
+        </div>
+    </div>
+  );
+};
+
+// =========================
 // MAIN DASHBOARD
 // =========================
 const CONSUMER_NODES = [
@@ -288,8 +347,6 @@ const Dashboard = () => {
   const [data, setData] = useState(null);
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
-  const [settings, setSettings] = useState({ ratePerLitre: 0.05 });
-  const [editRate, setEditRate] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -328,17 +385,10 @@ const Dashboard = () => {
       setAccounts(snapshot.val() || {});
     });
 
-    const settingsRef = ref(db, 'settings');
-    const unsubscribeSettings = onValue(settingsRef, (snapshot) => {
-      const s = snapshot.val();
-      if (s) setSettings(s);
-    });
-
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
       unsubscribeAccounts();
-      unsubscribeSettings();
     };
   }, [navigate]);
 
@@ -415,7 +465,21 @@ const Dashboard = () => {
       await set(ref(db, 'sensorData/consumer_node/totalLitres'), 0);
       await set(ref(db, 'sensorData/consumer_node_8266/totalLitres'), 0);
 
-      // 3. Turn off reset flag after 2 seconds (gives hardware time to see it)
+      // 3. Reset Accounts and Valves (Unblock everyone)
+      for (const node of CONSUMER_NODES) {
+        const { nodeId } = node;
+        await set(ref(db, `accounts/${nodeId}/blocked`), false);
+        await set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
+        await set(ref(db, `accounts/${nodeId}/theftReason`), null);
+        await set(ref(db, `accounts/${nodeId}/theftTime`), null);
+        await set(ref(db, `valves/${nodeId}/gov`), true);
+        await set(ref(db, `valves/${nodeId}/user`), true); // Also reset user switch to ON
+      }
+
+      // 4. Reset Government Node Stats
+      await set(ref(db, 'sensorData/gov_node/theftStatus'), 'NORMAL');
+
+      // 5. Turn off reset flag after 3 seconds
       setTimeout(() => {
         set(ref(db, 'commands/resetAll'), false);
       }, 3000);
@@ -637,64 +701,7 @@ const Dashboard = () => {
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'consumers' && renderConsumers()}
-          {activeTab === 'settings' && (
-            <div className="main-content">
-                <div className="card">
-                    <h2>⚙️ System Settings</h2>
-                    <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Global thresholds and node configurations.</p>
-                    
-                    {/* Water Rate Setting */}
-                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                      <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>💰 Water Rate (₹ per Litre)</h3>
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: '0 0 1rem' }}>This rate is used to calculate consumer billing. Changes apply instantly to all consumer dashboards.</p>
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div style={{ background: 'var(--primary-light)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', fontWeight: 700, color: 'var(--primary)', fontSize: '1.25rem' }}>
-                          Current: ₹{settings.ratePerLitre}/L
-                        </div>
-                        
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <input 
-                            type="number" 
-                            step="0.01" 
-                            min="0.01"
-                            placeholder="New rate (₹)"
-                            value={editRate}
-                            onChange={(e) => setEditRate(e.target.value)}
-                            style={{ padding: '0.6rem 1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', width: '140px', fontSize: '1rem', fontFamily: 'inherit' }}
-                          />
-                          <button 
-                            onClick={() => {
-                              const newRate = parseFloat(editRate);
-                              if (newRate && newRate > 0) {
-                                set(ref(db, 'settings/ratePerLitre'), newRate);
-                                setEditRate('');
-                              }
-                            }}
-                            disabled={!editRate || parseFloat(editRate) <= 0}
-                            style={{ padding: '0.6rem 1.25rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', opacity: !editRate ? 0.5 : 1 }}
-                          >
-                            Update Rate
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-                        {[0.03, 0.05, 0.10, 0.15, 0.25].map(r => (
-                          <button key={r} onClick={() => set(ref(db, 'settings/ratePerLitre'), r)}
-                            style={{ 
-                              padding: '0.4rem 0.8rem', border: settings.ratePerLitre === r ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                              borderRadius: 'var(--radius-md)', background: settings.ratePerLitre === r ? 'var(--primary-light)' : 'white',
-                              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem'
-                            }}>
-                            ₹{r}/L
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                </div>
-            </div>
-          )}
+          {activeTab === 'settings' && <SettingsView settingsData={data.settings} />}
         </div>
       </main>
     </div>

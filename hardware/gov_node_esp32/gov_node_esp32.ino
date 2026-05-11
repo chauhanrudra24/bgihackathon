@@ -44,9 +44,10 @@ float turbidityThreshold = 3.15;
 // =========================
 // YF-S201: ~7.5 pulses per liter per minute (450 pulses/L)
 volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min
+float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
+float flowCalibration = 7.5; // Default for YF-S201
 
 // Theft Detection
 float govSupplyLitres = 0.0;     // Total litres from gov supply
@@ -54,8 +55,15 @@ float consumerTotalLitres = 0.0; // Sum of all consumer usage (from Firebase)
 String theftStatus = "NORMAL";   // NORMAL, SUSPICIOUS, ALERT
 
 // IRAM_ATTR for ESP32 interrupt
+volatile unsigned long lastPulseTime = 0;
 void IRAM_ATTR flowPulseISR() {
-  pulseCount++;
+  unsigned long now = micros();
+  // Standard sensors don't pulse faster than 1-2kHz. 
+  // 500us debounce filters out noise > 2kHz.
+  if (now - lastPulseTime > 500) {
+    pulseCount++;
+    lastPulseTime = now;
+  }
 }
 
 void setup() {
@@ -149,15 +157,18 @@ void loop() {
     // YF-S201: Flow rate (L/min) = Frequency (Hz) / 7.5
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / 7.5;
+      float rawFlow = hz / flowCalibration;
       
-      // Noise Filter: Max possible for YF-S201 is ~30 L/min
-      // If we see a huge spike, it's likely electrical noise
-      if (rawFlow > 40.0) {
-        flowRate = 0; // Ignore noise
-      } else {
-        flowRate = rawFlow;
+      if (rawFlow > 60.0) {
+        rawFlow = 0; 
       }
+      
+      // Exponential Smoothing Filter (Alpha = 0.3)
+      // flowRate = (1 - alpha) * flowRate + alpha * rawFlow
+      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      
+      // If flow is very low, force to zero to avoid "ghost" readings
+      if (flowRate < 0.1) flowRate = 0;
     } else {
       flowRate = 0;
     }
@@ -190,6 +201,20 @@ void loop() {
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
         // Note: We don't reset the flag here, the dashboard or a master node should
+      }
+    }
+  }
+
+  // =========================
+  // SETTINGS SYNC (every 10 seconds)
+  // =========================
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo, "settings/govCalibration")) {
+      float newVal = fbdo.floatData();
+      if (newVal > 1.0 && newVal < 200.0) {
+        flowCalibration = newVal;
       }
     }
   }
