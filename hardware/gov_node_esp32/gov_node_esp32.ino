@@ -23,6 +23,7 @@ FirebaseConfig config;
 static WiFiManager wifiManager;
 
 unsigned long sendDataPrevMillis = 0;
+unsigned long sendFlowPrevMillis = 0;
 unsigned long theftCheckMillis = 0;
 
 // =========================
@@ -204,7 +205,17 @@ void loop() {
     Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowDifference", govSupplyLitres - consumerTotalLitres);
   }
 
-  // Send data to Firebase every 5 seconds (5000 milliseconds)
+  // =========================
+  // SEND FLOW DATA (every 1 second for real-time feel)
+  // =========================
+  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
+    sendFlowPrevMillis = millis();
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowRate", flowRate);
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", totalLitres);
+    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/gov_node/lastSeen");
+  }
+
+  // Send other data to Firebase every 5 seconds
   if (Firebase.ready() &&
       (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
@@ -267,15 +278,10 @@ void loop() {
       Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/tdsValue", tdsValue);
     }
 
-    // Flow data - always send
-    Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", totalLitres);
-
     if (!Firebase.RTDB.setString(&fbdo, "sensorData/gov_node/waterStatus", waterStatus)) {
       success = false;
       Serial.println("Firebase Write Error (status): " + fbdo.errorReason());
     }
-    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/gov_node/lastSeen");
 
     if (success) {
       Serial.println("==> Successfully sent to Firebase!");

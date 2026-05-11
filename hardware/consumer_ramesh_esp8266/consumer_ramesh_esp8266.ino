@@ -21,6 +21,7 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 unsigned long sendDataPrevMillis = 0;
+unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
 
 // =========================
@@ -186,14 +187,21 @@ void loop() {
                   currentValveState ? "OPEN" : "CLOSED");
   }
 
-  // Send data to Firebase every 5 seconds (5000 milliseconds)
+  // =========================
+  // SEND FLOW DATA (every 1 second for real-time feel)
+  // =========================
+  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
+    sendFlowPrevMillis = millis();
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate", flowRate);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres", totalLitres);
+    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
+  }
+
+  // Send other data to Firebase every 5 seconds (5000 milliseconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
     
     // Using Ramesh's path: "sensorData/consumer_node/"
-    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres", totalLitres);
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected", tamperDetected);
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState", currentValveState);
     
