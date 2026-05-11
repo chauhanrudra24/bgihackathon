@@ -33,7 +33,8 @@ const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference })
 
 // =========================
 // FLOW METER CARD
-// =========================
+const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
+  return (
     <div className="card flow-card" id={`flow-card-${label}`}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <h3>💧 {label}</h3>
