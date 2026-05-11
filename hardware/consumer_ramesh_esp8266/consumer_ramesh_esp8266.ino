@@ -42,9 +42,10 @@ unsigned long lastValveCheckMillis = 0;
 #define FLOW_CALIBRATION 98.0  // pulses per second per L/min (Standard for YF-S401 / small G1/8)
 
 volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min
+float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
+float flowCalibration = 98.0; // Default for small G1/8
 
 // Tamper detection - if valve is CLOSED but flow is detected
 bool tamperDetected = false;
@@ -142,17 +143,20 @@ void loop() {
     
     float elapsedSec = elapsedMs / 1000.0;
     
-    // Flow rate (L/min) = Frequency (Hz) / FLOW_CALIBRATION
+    // Flow rate (L/min) = Frequency (Hz) / flowCalibration
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / FLOW_CALIBRATION;
+      float rawFlow = hz / flowCalibration;
       
       // Noise Filter for small sensor
       if (rawFlow > 20.0) {
-        flowRate = 0;
-      } else {
-        flowRate = rawFlow;
+        rawFlow = 0;
       }
+      
+      // Exponential Smoothing Filter (Alpha = 0.3)
+      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      
+      if (flowRate < 0.05) flowRate = 0;
     } else {
       flowRate = 0;
     }
@@ -190,6 +194,20 @@ void loop() {
         totalLitres = 0;
         pulseCount = 0;
         Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/totalLitres", 0);
+      }
+    }
+  }
+
+  // =========================
+  // SETTINGS SYNC (every 10 seconds)
+  // =========================
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo1, "settings/consumerCalibration")) {
+      float newVal = fbdo1.floatData();
+      if (newVal > 10.0 && newVal < 1000.0) {
+        flowCalibration = newVal;
       }
     }
   }

@@ -44,9 +44,10 @@ float turbidityThreshold = 3.15;
 // =========================
 // YF-S201: ~7.5 pulses per liter per minute (450 pulses/L)
 volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min
+float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
+float flowCalibration = 7.5; // Default for YF-S201
 
 // Theft Detection
 float govSupplyLitres = 0.0;     // Total litres from gov supply
@@ -156,15 +157,18 @@ void loop() {
     // YF-S201: Flow rate (L/min) = Frequency (Hz) / 7.5
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / 7.5;
+      float rawFlow = hz / flowCalibration;
       
-      // If we see impossible spikes (e.g. > 60 L/min), it's noise.
-      // But we still count the pulses for total volume, just cap the rate.
       if (rawFlow > 60.0) {
-        flowRate = 0; 
-      } else {
-        flowRate = rawFlow;
+        rawFlow = 0; 
       }
+      
+      // Exponential Smoothing Filter (Alpha = 0.3)
+      // flowRate = (1 - alpha) * flowRate + alpha * rawFlow
+      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      
+      // If flow is very low, force to zero to avoid "ghost" readings
+      if (flowRate < 0.1) flowRate = 0;
     } else {
       flowRate = 0;
     }
@@ -197,6 +201,20 @@ void loop() {
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
         // Note: We don't reset the flag here, the dashboard or a master node should
+      }
+    }
+  }
+
+  // =========================
+  // SETTINGS SYNC (every 10 seconds)
+  // =========================
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo, "settings/govCalibration")) {
+      float newVal = fbdo.floatData();
+      if (newVal > 1.0 && newVal < 200.0) {
+        flowCalibration = newVal;
       }
     }
   }

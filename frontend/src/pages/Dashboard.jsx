@@ -642,14 +642,7 @@ const Dashboard = () => {
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'consumers' && renderConsumers()}
-          {activeTab === 'settings' && (
-            <div className="main-content">
-                <div className="card">
-                    <h2>⚙️ System Settings</h2>
-                    <p style={{ color: 'var(--text-secondary)' }}>Global thresholds and node configurations.</p>
-                </div>
-            </div>
-          )}
+          {activeTab === 'settings' && renderSettings()}
         </div>
       </main>
     </div>
