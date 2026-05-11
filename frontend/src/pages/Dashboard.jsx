@@ -449,7 +449,7 @@ const Dashboard = () => {
   useEffect(() => {
     const interval = setInterval(() => {
       setCountdown(prev => {
-        if (prev <= 1) return 5; // Reset to 5 when it reaches 0/1
+        if (prev === 0) return 5; // Reset to 5 after showing 0/Syncing
         return prev - 1;
       });
     }, 1000);
@@ -775,7 +775,7 @@ const Dashboard = () => {
           />
 
           <div className="update-timer">
-              {countdown > 0 ? `Live data sync in ` : ''} 
+              {countdown > 0 ? `Refresh in ` : ''} 
               <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
           </div>
 
