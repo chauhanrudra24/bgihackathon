@@ -181,7 +181,7 @@ const ConsumerDashboard = () => {
       );
     }
 
-    const tdsConnected = sensorData.tdsConnected !== false;
+    const tdsConnected = sensorData.tdsConnected === true;
     const tds = tdsConnected ? (sensorData.tdsValue || 0) : 0;
     let tdsQuality = tdsConnected ? "GOOD" : "NOT CONNECTED";
     let tdsClass = tdsConnected ? "status" : "status offline";
@@ -199,7 +199,7 @@ const ConsumerDashboard = () => {
       }
     }
 
-    const turbConnected = sensorData.turbidityConnected !== false;
+    const turbConnected = sensorData.turbidityConnected === true;
     const turbVoltage = turbConnected ? (sensorData.turbidityVoltage || 0) : 0;
     const turbStatus = turbConnected ? (sensorData.waterStatus || "UNKNOWN") : "NOT CONNECTED";
     

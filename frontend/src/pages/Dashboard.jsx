@@ -78,7 +78,7 @@ const NodeCard = ({ title, nodeData }) => {
     );
   }
 
-  const tdsConnected = nodeData.tdsConnected !== false;
+  const tdsConnected = nodeData.tdsConnected === true;
   const tds = tdsConnected ? (nodeData.tdsValue || 0) : 0;
   let tdsQuality = tdsConnected ? "GOOD" : "NOT CONNECTED";
   let tdsClass = tdsConnected ? "status" : "status offline";
@@ -96,7 +96,7 @@ const NodeCard = ({ title, nodeData }) => {
     }
   }
 
-  const turbConnected = nodeData.turbidityConnected !== false;
+  const turbConnected = nodeData.turbidityConnected === true;
   const turbVoltage = turbConnected ? (nodeData.turbidityVoltage || 0) : 0;
   const turbStatus = turbConnected ? (nodeData.waterStatus || "UNKNOWN") : "NOT CONNECTED";
   
