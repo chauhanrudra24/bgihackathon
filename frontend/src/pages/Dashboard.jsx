@@ -421,7 +421,6 @@ const Dashboard = () => {
       const newData = snapshot.val();
       if (newData) {
         setData(newData);
-        setCountdown(5);
         setErrorMsg('');
       } else {
         setErrorMsg('Connected to Firebase, but sensorData is empty.');
@@ -445,6 +444,17 @@ const Dashboard = () => {
       unsubscribeAccounts();
     };
   }, [navigate]);
+
+  // ===== LIVE SYNC COUNTDOWN =====
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) return 5; // Reset to 5 when it reaches 0/1
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ===== AUTO THEFT DETECTION =====
   // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
@@ -486,14 +496,6 @@ const Dashboard = () => {
       }
     });
   }, [accounts]);
-
-  useEffect(() => {
-    if (!data) return;
-    const interval = setInterval(() => {
-      setCountdown(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [data]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
