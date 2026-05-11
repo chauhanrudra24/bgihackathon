@@ -140,9 +140,6 @@ void loop() {
   // =========================
   // CALCULATE FLOW RATE (every 1 second)
   // =========================
-  // =========================
-  // CALCULATE FLOW RATE (every 1 second)
-  // =========================
   if (millis() - lastFlowCalc >= 1000) {
     unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
@@ -159,26 +156,31 @@ void loop() {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / flowCalibration;
       
-      if (rawFlow > 60.0) {
+      if (rawFlow > 80.0) {
         rawFlow = 0; 
       }
       
-      // Exponential Smoothing Filter (Alpha = 0.3)
-      // flowRate = (1 - alpha) * flowRate + alpha * rawFlow
-      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      // Better Smoothing Filter (Alpha = 0.15 for high stability)
+      if (pulseCopy == 0) {
+        flowRate = flowRate * 0.5; // Fast decay
+        if (flowRate < 0.05) flowRate = 0;
+      } else {
+        flowRate = (flowRate * 0.85) + (rawFlow * 0.15);
+      }
       
-      // If flow is very low, force to zero to avoid "ghost" readings
       if (flowRate < 0.1) flowRate = 0;
     } else {
       flowRate = 0;
     }
     
     // Volume in litres for this interval
-    // YF-S201: ~450 pulses per liter
-    float litresThisInterval = pulseCopy / 450.0;
+    float pulsesPerLitre = flowCalibration * 60.0;
+    float litresThisInterval = 0;
+    if (pulsesPerLitre > 0) {
+      litresThisInterval = (float)pulseCopy / pulsesPerLitre;
+    }
     
-    // Safety check for volume too
-    if (flowRate > 0) {
+    if (litresThisInterval > 0) {
       totalLitres += litresThisInterval;
       govSupplyLitres += litresThisInterval;
     }
