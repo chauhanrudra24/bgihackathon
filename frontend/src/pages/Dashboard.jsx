@@ -277,6 +277,65 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 };
 
 // =========================
+// SETTINGS VIEW
+// =========================
+const SettingsView = ({ settingsData }) => {
+  const [localPrice, setLocalPrice] = useState(settingsData?.pricePerLiter || 0.5);
+  const [localGovCal, setLocalGovCal] = useState(settingsData?.govCalibration || 7.5);
+  const [localConsCal, setLocalConsCal] = useState(settingsData?.consumerCalibration || 98.0);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await set(ref(db, 'settings'), {
+        pricePerLiter: parseFloat(localPrice),
+        govCalibration: parseFloat(localGovCal),
+        consumerCalibration: parseFloat(localConsCal),
+        updatedAt: Date.now()
+      });
+      alert("✅ Settings saved and pushed to all nodes!");
+    } catch (err) {
+      alert("❌ Failed to save settings.");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="main-content">
+        <div className="card settings-card">
+            <h2>⚙️ System Configuration</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Configure global pricing and calibrate IoT flow sensors remotely.</p>
+            
+            <div className="settings-grid">
+              <div className="input-group">
+                <label>💰 Water Price (per Liter)</label>
+                <input type="number" step="0.01" value={localPrice} onChange={(e) => setLocalPrice(e.target.value)} />
+                <small>Used for billing calculations across the network.</small>
+              </div>
+
+              <div className="input-group">
+                <label>🏗️ Gov Node Calibration (YF-S201)</label>
+                <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
+                <small>Standard: 7.5. Increase if reading is too high.</small>
+              </div>
+
+              <div className="input-group">
+                <label>🏠 Consumer Node Calibration (G1/8")</label>
+                <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
+                <small>Standard: 98.0. Calibration Hz per L/min.</small>
+              </div>
+            </div>
+
+            <button disabled={saving} onClick={handleSave} className="submit-btn" style={{ marginTop: '2rem', maxWidth: '200px' }}>
+              {saving ? 'Saving...' : '💾 Save Settings'}
+            </button>
+        </div>
+    </div>
+  );
+};
+
+// =========================
 // MAIN DASHBOARD
 // =========================
 const CONSUMER_NODES = [
@@ -642,7 +701,7 @@ const Dashboard = () => {
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'consumers' && renderConsumers()}
-          {activeTab === 'settings' && renderSettings()}
+          {activeTab === 'settings' && <SettingsView settingsData={data.settings} />}
         </div>
       </main>
     </div>
