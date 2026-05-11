@@ -54,8 +54,15 @@ float consumerTotalLitres = 0.0; // Sum of all consumer usage (from Firebase)
 String theftStatus = "NORMAL";   // NORMAL, SUSPICIOUS, ALERT
 
 // IRAM_ATTR for ESP32 interrupt
+volatile unsigned long lastPulseTime = 0;
 void IRAM_ATTR flowPulseISR() {
-  pulseCount++;
+  unsigned long now = micros();
+  // Standard sensors don't pulse faster than 1-2kHz. 
+  // 500us debounce filters out noise > 2kHz.
+  if (now - lastPulseTime > 500) {
+    pulseCount++;
+    lastPulseTime = now;
+  }
 }
 
 void setup() {
@@ -151,10 +158,10 @@ void loop() {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / 7.5;
       
-      // Noise Filter: Max possible for YF-S201 is ~30 L/min
-      // If we see a huge spike, it's likely electrical noise
-      if (rawFlow > 40.0) {
-        flowRate = 0; // Ignore noise
+      // If we see impossible spikes (e.g. > 60 L/min), it's noise.
+      // But we still count the pulses for total volume, just cap the rate.
+      if (rawFlow > 60.0) {
+        flowRate = 0; 
       } else {
         flowRate = rawFlow;
       }

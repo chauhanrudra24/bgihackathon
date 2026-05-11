@@ -50,8 +50,14 @@ bool tamperDetected = false;
 bool currentValveState = false;
 
 // ISR for flow sensor
+volatile unsigned long lastPulseTime = 0;
 void ICACHE_RAM_ATTR flowPulseISR() {
-  pulseCount++;
+  unsigned long now = micros();
+  // Small sensors can pulse faster. 200us allows up to 5kHz.
+  if (now - lastPulseTime > 200) {
+    pulseCount++;
+    lastPulseTime = now;
+  }
 }
 
 void setup() {
@@ -137,10 +143,11 @@ void loop() {
     
     // Flow rate (L/min) = Frequency (Hz) / FLOW_CALIBRATION
     if (elapsedSec > 0) {
-      float rawFlow = (pulseCopy / elapsedSec) / FLOW_CALIBRATION;
+      float hz = pulseCopy / elapsedSec;
+      float rawFlow = hz / FLOW_CALIBRATION;
       
-      // Noise Filter for small sensor: Max ~5 L/min
-      if (rawFlow > 10.0) {
+      // Noise Filter for small sensor
+      if (rawFlow > 20.0) {
         flowRate = 0;
       } else {
         flowRate = rawFlow;
