@@ -184,101 +184,98 @@ const ConsumerDashboard = () => {
   return (
     <div className="dashboard-container">
       <div className="dashboard">
-        <div className="header-flex">
-            <h1>Welcome, {user.name}</h1>
+        <header className="header-flex" style={{ marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Good Morning,</p>
+              <h1 style={{ fontSize: '1.5rem' }}>{user.name}</h1>
+            </div>
             <button onClick={handleLogout} className="logout-btn">Logout</button>
-        </div>
+        </header>
         
-        <div className="update-timer">
-            Next update in <span>{countdown}s</span>
-        </div>
-
         {/* Tamper Alert Banner */}
         {tamperDetected && myNodeOnline && (
           <div className="theft-banner alert" style={{ marginBottom: '2rem' }}>
             <div className="theft-banner-icon">🚨</div>
             <div className="theft-banner-content">
-              <h3>TAMPER ALERT: Unauthorized Flow Detected!</h3>
-              <p>Water is flowing through your meter while the valve is <strong>CLOSED</strong>. Possible bypass or pipe cut detected. Contact authorities immediately.</p>
+              <h3>UNAUTHORIZED FLOW</h3>
+              <p>Water flow detected while valve is CLOSED. Check for leaks or tampering.</p>
             </div>
           </div>
         )}
 
         {/* My Home Section */}
-        <div className="node-container" style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
-            <h2>🏠 My Home Water System</h2>
+        <section className="node-container">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontSize: '1.1rem', margin: 0 }}>🏠 My Water System</h2>
             <span className={`status ${myNodeOnline ? (tamperDetected ? 'dirty' : '') : 'offline'}`}>
-              {myNodeOnline ? (tamperDetected ? '⚠ TAMPER' : '● ONLINE') : 'OFFLINE'}
+              {myNodeOnline ? (tamperDetected ? '⚠ ALERT' : '● ONLINE') : 'OFFLINE'}
             </span>
           </div>
           
-          {/* Valve Control */}
-          <div className="valve-card" style={{ marginBottom: '1.5rem', opacity: myNodeOnline ? 1 : 0.6 }}>
-              <div className="valve-info">
-                <h3>🚰 Main Water Valve</h3>
-                <p>{myNodeOnline ? 'Active Control' : 'Hardware Offline - Control Unavailable'}</p>
+          {/* Main Control Card */}
+          <div className="card" style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, var(--surface-color), var(--primary-light))', border: '1px solid var(--primary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="valve-info">
+                  <h3 style={{ color: 'var(--primary)' }}>Main Valve</h3>
+                  <p style={{ fontSize: '0.8rem' }}>{myNodeOnline ? 'Active Control' : 'Device Offline'}</p>
+                </div>
+                <button 
+                  disabled={!myNodeOnline}
+                  onClick={toggleValve} 
+                  className={`valve-btn ${valveState ? 'open' : 'closed'}`}
+                  style={{ padding: '0.6rem 1.5rem' }}
+                >
+                  {valveState ? "ON" : "OFF"}
+                </button>
               </div>
-              <button 
-                disabled={!myNodeOnline}
-                onClick={toggleValve} 
-                className={`valve-btn ${valveState ? 'open' : 'closed'}`}
-              >
-                {valveState ? "OPEN" : "CLOSED"}
-              </button>
           </div>
 
           {/* Flow Data Cards */}
-          {myNodeOnline && (
-            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+          {myNodeOnline ? (
+            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
               <div className="card">
-                <h3>💧 Current Flow</h3>
-                <div className="value">
+                <h3>Current Flow</h3>
+                <div className="value" style={{ fontSize: '1.8rem' }}>
                   {(myNodeData?.flowRate || 0).toFixed(1)}
                   <span className="unit">L/min</span>
                 </div>
-                {myNodeData?.flowRate > 0 ? (
-                  <div className="flow-active-indicator">
-                    <span className="flow-dot"></span> Water Flowing
+                {myNodeData?.flowRate > 0 && (
+                  <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
+                    <span className="flow-dot"></span> Flowing
                   </div>
-                ) : (
-                  <div className="status offline">No Flow</div>
                 )}
               </div>
 
               <div className="card">
-                <h3>📊 Total Usage</h3>
-                <div className="value">
-                  {(myNodeData?.totalLitres || 0).toFixed(2)}
+                <h3>Total Usage</h3>
+                <div className="value" style={{ fontSize: '1.8rem' }}>
+                  {(myNodeData?.totalLitres || 0).toFixed(1)}
                   <span className="unit">L</span>
                 </div>
-                <div className="status">SINCE BOOT</div>
-              </div>
-
-              <div className="card">
-                <h3>🔒 Security</h3>
-                <div className="value" style={{ fontSize: '1.5rem', margin: '0.75rem 0' }}>
-                  {tamperDetected ? 'TAMPER' : 'SECURE'}
-                </div>
-                <div className={`status ${tamperDetected ? 'dirty' : ''}`}>
-                  {tamperDetected ? '⚠ CHECK PIPES' : '✓ ALL CLEAR'}
-                </div>
+                <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
               </div>
             </div>
-          )}
-
-          {!myNodeOnline && (
-            <div className="card" style={{ textAlign: 'center', padding: '2rem' }}>
-              <h2 style={{ color: 'var(--warning)', margin: 0 }}>🔌 Home Node Offline</h2>
-              <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
-                Waiting for your home ESP device to connect...
-              </p>
+          ) : (
+            <div className="card" style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-color)' }}>
+              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Waiting for hardware connection...</p>
             </div>
           )}
-        </div>
+        </section>
+
+        <div style={{ height: '2rem' }}></div>
 
         {/* Gov Water Quality Info */}
-        {renderQualityCard(govData, "🏛️ Gov Water Supply Info")}
+        <section>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.1rem', margin: 0 }}>🏛️ City Supply</h2>
+            <span className="status" style={{ fontSize: '0.6rem' }}>LIVE QUALITY</span>
+          </div>
+          {renderQualityCard(govData, "Pumping Station")}
+        </section>
+
+        <div className="update-timer">
+            Refresh in <span>{countdown}s</span>
+        </div>
       </div>
     </div>
   );

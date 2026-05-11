@@ -298,80 +298,101 @@ const Dashboard = () => {
   const theftStatus = govNode.theftStatus || 'NORMAL';
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard">
-        <div className="header-flex">
-            <h1>💧 Jal Board Quality Monitor</h1>
-            <button onClick={handleLogout} className="logout-btn">Logout</button>
+    <div className="gov-dashboard-layout">
+      {/* Sidebar for Laptop */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div style={{ fontSize: '1.5rem' }}>💧</div>
+          <h2>Jal Board</h2>
         </div>
         
-        {/* Theft Alert Banner */}
-        <TheftAlertBanner 
-          theftStatus={theftStatus}
-          govSupply={govNode.govSupplyLitres}
-          consumerTotal={govNode.consumerTotalLitres}
-          difference={govNode.flowDifference}
-        />
+        <nav className="sidebar-nav">
+          <div className="nav-item active">📊 Dashboard</div>
+          <div className="nav-item">📈 Analytics</div>
+          <div className="nav-item">👥 Consumers</div>
+          <div className="nav-item">⚙️ Settings</div>
+        </nav>
 
-        <div className="update-timer">
-            {countdown > 0 ? `Live data sync in ` : ''} 
-            <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
+        <div className="sidebar-footer">
+          <div className="nav-item" onClick={handleLogout}>🚪 Logout</div>
         </div>
+      </aside>
 
-        <div className="main-content">
-          {/* Government Node - Water Quality + Flow */}
-          <NodeCard 
-            title="🏛️ Sector-12 Pumping Station" 
-            nodeData={govNode} 
+      <main className="main-content-area">
+        <div className="dashboard">
+          <div className="header-flex">
+              <h1>🏛️ Government Control Center</h1>
+              <div className="status" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>ADMIN ACCESS</div>
+          </div>
+          
+          {/* Theft Alert Banner */}
+          <TheftAlertBanner 
+            theftStatus={theftStatus}
+            govSupply={govNode.govSupplyLitres}
+            consumerTotal={govNode.consumerTotalLitres}
+            difference={govNode.flowDifference}
           />
 
-          {/* Supply vs Consumption Summary */}
-          <div className="node-container" style={{ marginTop: '2rem' }}>
-            <h2>📊 Supply vs Consumption Analysis</h2>
-            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-              <div className="card stat-card supply">
-                <h3>Total Supply</h3>
-                <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
-                <div className="status">FROM PLANT</div>
-              </div>
-              <div className="card stat-card consumption">
-                <h3>Total Consumed</h3>
-                <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
-                <div className="status">BY HOMES</div>
-              </div>
-              <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
-                <h3>Unaccounted</h3>
-                <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
-                <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
-                  {theftStatus}
+          <div className="update-timer">
+              {countdown > 0 ? `Live data sync in ` : ''} 
+              <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
+          </div>
+
+          <div className="main-content">
+            {/* Government Node - Water Quality + Flow */}
+            <NodeCard 
+              title="Sector-12 Pumping Station" 
+              nodeData={govNode} 
+            />
+
+            {/* Supply vs Consumption Summary */}
+            <div className="node-container" style={{ marginTop: '2rem' }}>
+              <h2>📊 Network Efficiency</h2>
+              <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                <div className="card stat-card supply">
+                  <h3>Total Supply</h3>
+                  <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+                  <div className="status">FROM PLANT</div>
+                </div>
+                <div className="card stat-card consumption">
+                  <h3>Total Consumed</h3>
+                  <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+                  <div className="status">BY HOMES</div>
+                </div>
+                <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
+                  <h3>Unaccounted</h3>
+                  <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
+                  <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
+                    {theftStatus}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Consumer Control Section */}
-          <div className="node-container" style={{ marginTop: '2.5rem' }}>
-            <h2>🏠 Consumer Supply Control & Monitoring</h2>
-            <div className="consumer-grid">
-              <ConsumerCard 
-                title="Ramesh Kumar (House 42-B)"
-                nodeId="consumer_node"
-                valveState={valves.consumer_node}
-                nodeData={data.consumer_node}
-                onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
-              />
-              
-              <ConsumerCard 
-                title="Priya Patel (House 104)"
-                nodeId="consumer_node_8266"
-                valveState={valves.consumer_node_8266}
-                nodeData={data.consumer_node_8266}
-                onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
-              />
+            {/* Consumer Control Section */}
+            <div className="node-container" style={{ marginTop: '2.5rem' }}>
+              <h2>🏠 Smart Meter Management</h2>
+              <div className="consumer-grid">
+                <ConsumerCard 
+                  title="Ramesh Kumar (House 42-B)"
+                  nodeId="consumer_node"
+                  valveState={valves.consumer_node}
+                  nodeData={data.consumer_node}
+                  onToggleValve={() => set(ref(db, `valves/consumer_node`), !valves.consumer_node)}
+                />
+                
+                <ConsumerCard 
+                  title="Priya Patel (House 104)"
+                  nodeId="consumer_node_8266"
+                  valveState={valves.consumer_node_8266}
+                  nodeData={data.consumer_node_8266}
+                  onToggleValve={() => set(ref(db, `valves/consumer_node_8266`), !valves.consumer_node_8266)}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
