@@ -287,7 +287,7 @@ void loop() {
     float turbidityVoltage = (turbSum / 20.0) * (3.3 / 4095.0);
 
     String waterStatus;
-    bool turbConnected = (turbidityVoltage > 0.05); // Threshold for connection
+    bool turbConnected = (turbidityVoltage > 0.1); // 0.1V threshold for connection
     
     if (!turbConnected) {
       waterStatus = "NOT CONNECTED";
@@ -303,16 +303,14 @@ void loop() {
       tdsSum += analogRead(TDS_PIN);
       delay(2);
     }
-    float averageVoltage = (tdsSum / 20.0) * (3.3 / 4095.0);
-      delay(10);
-    }
-    float avgValue = sum / 10.0;
-    float tdsVoltage = avgValue * (3.3 / 4095.0);
+    float tdsVoltage = (tdsSum / 20.0) * (3.3 / 4095.0);
+    
+    // Convert voltage to ppm (gravity formula)
     float tdsValue = (133.42 * tdsVoltage * tdsVoltage * tdsVoltage -
                       255.86 * tdsVoltage * tdsVoltage + 857.39 * tdsVoltage) *
                      0.5;
 
-    bool tdsConnected = (tdsVoltage > 0.05); // Threshold for connection
+    bool tdsConnected = (tdsVoltage > 0.1); // 0.1V threshold for connection
 
     // =========================
     // FLOW SENSOR CONNECTION CHECK

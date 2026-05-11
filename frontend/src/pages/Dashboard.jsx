@@ -115,6 +115,9 @@ const NodeCard = ({ title, nodeData }) => {
   if (!turbConnected || !tdsConnected) {
     finalQuality = "SENSOR ERROR";
     finalClass = "status warning";
+  } else if (turbStatus === 'NOT CONNECTED' || tdsQuality === 'NOT CONNECTED') {
+    finalQuality = "SENSOR DISCONNECTED";
+    finalClass = "status offline";
   } else if (nodeData.waterStatus === 'DIRTY') {
     finalQuality = "UNSAFE (DIRTY)";
     finalClass = "status dirty";
