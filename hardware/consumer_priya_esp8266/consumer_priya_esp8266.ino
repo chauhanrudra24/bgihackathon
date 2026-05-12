@@ -89,6 +89,7 @@ void setup() {
   
   // 1. Connect to WiFi using WiFiManager
   WiFi.mode(WIFI_STA);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFiManager wifiManager;
   
   pinMode(LED_BUILTIN, OUTPUT);
