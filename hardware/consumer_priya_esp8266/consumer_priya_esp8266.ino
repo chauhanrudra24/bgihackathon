@@ -10,6 +10,7 @@
 #include "addons/RTDBHelper.h"
 
 #include <WiFiManager.h>
+#include <Ticker.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
 // =========================
@@ -23,6 +24,19 @@ FirebaseConfig config;
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
+Ticker blinker;
+
+void blink() {
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+}
+
+// Callback when entering config mode
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
+}
 
 // =========================
 // VALVE PIN
@@ -38,13 +52,13 @@ unsigned long lastValveCheckMillis = 0;
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 98.0  // F = 98 * Q (L/min)
+#define FLOW_CALIBRATION 96.0  // F = 96 * Q (L/min) for YF-S401
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // Default for small G1/8
+float flowCalibration = 96.0; // Default for small G1/8
 
 // Tamper detection - if valve is CLOSED but flow is detected
 bool tamperDetected = false;
@@ -75,6 +89,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
 
+  // Set callback for when AP mode starts
+  wifiManager.setAPCallback(configModeCallback);
+
   Serial.println("Connecting to Wi-Fi...");
   // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Priya_AP"
   if (!wifiManager.autoConnect("Consumer_Priya_AP")) {
@@ -83,12 +100,9 @@ void setup() {
     ESP.restart(); // Reset and try again
   }
 
-  Serial.println();
-  Serial.print("Connected with IP: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
-
-  digitalWrite(LED_BUILTIN, LOW); // LOW means ON for ESP8266
+  // Once connected, stop blinking and keep LED ON (LOW = ON for ESP8266)
+  blinker.detach();
+  digitalWrite(LED_BUILTIN, LOW); 
 
   // 1.5 Setup OTA
   ArduinoOTA.setHostname("Consumer_Priya");

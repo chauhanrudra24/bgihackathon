@@ -290,8 +290,8 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 const SettingsView = () => {
   const [settings, setSettings] = useState(null);
   const [localPrice, setLocalPrice] = useState(0.5);
-  const [localGovCal, setLocalGovCal] = useState(98.0);
-  const [localConsCal, setLocalConsCal] = useState(98.0);
+  const [localGovCal, setLocalGovCal] = useState(96.0);
+  const [localConsCal, setLocalConsCal] = useState(96.0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -303,8 +303,8 @@ const SettingsView = () => {
       if (s) {
         setSettings(s);
         setLocalPrice(s.pricePerLiter ?? 0.5);
-        setLocalGovCal(s.govCalibration ?? 7.5);
-        setLocalConsCal(s.consumerCalibration ?? 98.0);
+        setLocalGovCal(s.govCalibration ?? 96.0);
+        setLocalConsCal(s.consumerCalibration ?? 96.0);
       }
     });
     return () => unsubscribe();
@@ -350,15 +350,15 @@ const SettingsView = () => {
               </div>
 
               <div className="input-group">
-                <label>🏗️ Gov Node Calibration (YF-S201)</label>
+                <label>🏗️ Gov Node Calibration (YF-S401)</label>
                 <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
-                <small>Standard: 7.5. Increase if reading is too low. System now applies 0.15α smoothing.</small>
+                <small>Standard: 96.0. Calibrated for 6mm ID pipe. System now applies 0.15α smoothing.</small>
               </div>
               
               <div className="input-group">
-                <label>🏠 Consumer Node Calibration (G1/8")</label>
+                <label>🏠 Consumer Node Calibration (YF-S401)</label>
                 <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
-                <small>Standard: 98.0. System automatically adjusts pulse-to-liter integration based on this value.</small>
+                <small>Standard: 96.0. System automatically adjusts pulse-to-liter integration based on this value.</small>
               </div>
             </div>
 

@@ -10,6 +10,7 @@
 #include "addons/RTDBHelper.h"
 
 #include <WiFiManager.h>
+#include <Ticker.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
 // =========================
@@ -21,6 +22,19 @@ FirebaseConfig config;
 
 // Use a static or global instance for WiFiManager on ESP32
 static WiFiManager wifiManager;
+Ticker blinker;
+
+void blink() {
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+}
+
+// Callback when entering config mode
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
+}
 
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
@@ -47,7 +61,7 @@ volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // Calibrated for YF-S401 (6mm ID)
+float flowCalibration = 96.0; // Calibrated for YF-S401 (6mm ID)
 
 // Theft Detection
 float govSupplyLitres = 0.0;     // Total litres from gov supply
@@ -84,6 +98,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW); // LED OFF while connecting
 
+  // Set callback for when AP mode starts
+  wifiManager.setAPCallback(configModeCallback);
+
   Serial.println("Connecting to Wi-Fi...");
   // Connects to saved Wi-Fi or sets up an Access Point named "JalBoard_GovNode_AP"
   if (!wifiManager.autoConnect("JalBoard_GovNode_AP")) {
@@ -91,6 +108,10 @@ void setup() {
     delay(3000);
     ESP.restart(); // Reset and try again
   }
+
+  // Once connected, stop blinking and keep LED ON
+  blinker.detach();
+  digitalWrite(LED_BUILTIN, HIGH); 
 
   Serial.println();
   Serial.print("Connected with IP: ");

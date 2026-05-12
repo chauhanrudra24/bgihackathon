@@ -10,6 +10,7 @@
 #include "addons/RTDBHelper.h"
 
 #include <WiFiManager.h>
+#include <Ticker.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
 // =========================
@@ -23,28 +24,41 @@ FirebaseConfig config;
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
+Ticker blinker;
+
+void blink() {
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+}
+
+// Callback when entering config mode
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
+}
 
 // =========================
 // VALVE PIN
 // =========================
-#define RELAY_PIN D1   // Relay for Solenoid Valve
-#define RELAY_ON LOW   // Change to HIGH if your relay is Active-HIGH
-#define RELAY_OFF HIGH // Change to LOW if your relay is Active-HIGH
+#define RELAY_PIN D2   // Relay for Solenoid Valve (Standardized)
+#define RELAY_ON LOW   
+#define RELAY_OFF HIGH 
 
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D2 // 1/8" Flow Sensor Signal Pin
+#define FLOW_SENSOR_PIN D5 // 1/8" Flow Sensor Signal Pin (Fixed D2->D5)
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 98.0 // F = 98 * Q (L/min)
+#define FLOW_CALIBRATION 96.0 // F = 96 * Q (L/min) for YF-S401
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;    // L/min (Smoothed)
 float totalLitres = 0.0; // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // Default for small G1/8
+float flowCalibration = 96.0; // Default for small G1/8
 
 // Tamper detection - if valve is CLOSED but flow is detected
 bool tamperDetected = false;
@@ -73,8 +87,8 @@ void setup() {
   WiFiManager wifiManager;
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN,
-               HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
+  digitalWrite(LED_BUILTIN, HIGH); 
+  wifiManager.setAPCallback(configModeCallback);
 
   Serial.println("Connecting to Wi-Fi...");
   // Connects to saved Wi-Fi or sets up an Access Point named
@@ -90,6 +104,7 @@ void setup() {
   Serial.println(WiFi.localIP());
   Serial.println();
 
+  blinker.detach();
   digitalWrite(LED_BUILTIN, LOW); // LOW means ON for ESP8266
 
   // 1.5 Setup OTA
