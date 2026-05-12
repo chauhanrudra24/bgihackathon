@@ -56,7 +56,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D6  // Matches standardized wiring (Pin D6 / GPIO 12)
+#define FLOW_SENSOR_PIN D5  // Matches standardized wiring (Pin D5 / GPIO 14)
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
@@ -76,8 +76,8 @@ bool currentValveState = false;
 volatile unsigned long lastPulseTime = 0;
 void ICACHE_RAM_ATTR flowPulseISR() {
   unsigned long now = micros();
-  // Small sensors can pulse faster. 200us allows up to 5kHz.
-  if (now - lastPulseTime > 200) {
+  // Small sensors can pulse faster. 500us allows up to 2kHz which is plenty.
+  if (now - lastPulseTime > 500) {
     pulseCount++;
     lastPulseTime = now;
   }
@@ -140,7 +140,7 @@ void setup() {
 
   // 4. Setup Flow Sensor
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
   lastFlowCalc = millis();
 
   Serial.println("Flow Sensor (1/8 inch) initialized on D5");
