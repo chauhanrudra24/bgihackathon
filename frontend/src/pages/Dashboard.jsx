@@ -569,8 +569,13 @@ const Dashboard = () => {
       
       updates['sensorData/consumer_node/totalLitres'] = 0;
       updates['sensorData/consumer_node/flowRate'] = 0;
+      updates['sensorData/consumer_node/emergencyActive'] = false;
+      updates['sensorData/consumer_node/emergencyValue'] = 0;
+      
       updates['sensorData/consumer_node_8266/totalLitres'] = 0;
       updates['sensorData/consumer_node_8266/flowRate'] = 0;
+      updates['sensorData/consumer_node_8266/emergencyActive'] = false;
+      updates['sensorData/consumer_node_8266/emergencyValue'] = 0;
 
       // 3. Reset Accounts (Balance to 500) and Valves (Unblock everyone)
       for (const node of CONSUMER_NODES) {
@@ -582,6 +587,7 @@ const Dashboard = () => {
         updates[`accounts/${nodeId}/theftTime`] = null;
         updates[`valves/${nodeId}/gov`] = true;
         updates[`valves/${nodeId}/user`] = true;
+        updates[`commands/${nodeId}/triggerEmergency`] = false;
       }
 
       // Perform all updates in one go (more efficient)
