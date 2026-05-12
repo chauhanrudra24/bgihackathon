@@ -232,12 +232,30 @@ void loop() {
   // SETTINGS SYNC (every 10 seconds)
   // =========================
   static unsigned long lastSettingsSync = 0;
-  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
-    lastSettingsSync = millis();
-    if (Firebase.RTDB.getFloat(&fbdo, "settings/govCalibration")) {
-      float newVal = fbdo.floatData();
-      if (newVal > 1.0 && newVal < 200.0) {
-        flowCalibration = newVal;
+    }
+  }
+
+  // =========================
+  // RESET ALL COMMAND
+  // =========================
+  static unsigned long lastResetCheck = 0;
+  if (Firebase.ready() && (millis() - lastResetCheck > 2000)) {
+    lastResetCheck = millis();
+    if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
+      FirebaseJson &json = fbdo.jsonObject();
+      FirebaseJsonData jsonData;
+      json.get(jsonData, "resetAll");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+        Serial.println("🔄 GOVERNMENT RESET: Clearing Supply Totals...");
+        govSupplyLitres = 0;
+        totalLitres = 0;
+        flowRate = 0; // Added to prevent theft alert flicker
+        consumerTotalLitres = 0;
+        theftStatus = "NORMAL";
+        // Final clearing of the command is handled by consumers, but we clear our status
+        Firebase.RTDB.setString(&fbdo, "sensorData/gov_node/theftStatus", "NORMAL");
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowRate", 0);
       }
     }
   }

@@ -429,6 +429,7 @@ const Dashboard = () => {
   const [data, setData] = useState(null);
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
+  const [commands, setCommands] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
@@ -443,6 +444,7 @@ const Dashboard = () => {
     const sensorRef = ref(db, 'sensorData');
     const valvesRef = ref(db, 'valves');
     const accountsRef = ref(db, 'accounts');
+    const commandsRef = ref(db, 'commands');
     
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const newData = snapshot.val();
@@ -465,10 +467,15 @@ const Dashboard = () => {
       setAccounts(snapshot.val() || {});
     });
 
+    const unsubscribeCommands = onValue(commandsRef, (snapshot) => {
+      setCommands(snapshot.val() || {});
+    });
+
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
       unsubscribeAccounts();
+      unsubscribeCommands();
     };
   }, [navigate]);
 
@@ -476,7 +483,7 @@ const Dashboard = () => {
   // ===== AUTO THEFT DETECTION =====
   // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
   useEffect(() => {
-    if (!data) return;
+    if (!data || commands.resetAll) return; // SKIP THEFT CHECK DURING RESET
     const govNode = data.gov_node;
     const govOnline = isNodeOnline(govNode);
     // If gov supply is active (>2L/min), consumer is online, valve is open, but consumer flow is zero → flag
@@ -566,6 +573,9 @@ const Dashboard = () => {
       updates['sensorData/gov_node/consumerTotalLitres'] = 0;
       updates['sensorData/gov_node/flowDifference'] = 0;
       updates['sensorData/gov_node/theftStatus'] = 'NORMAL';
+      updates['sensorData/gov_node/govSupplyLitres'] = 0;
+      updates['sensorData/gov_node/consumerTotalLitres'] = 0;
+      updates['sensorData/gov_node/flowDifference'] = 0;
       
       updates['sensorData/consumer_node/totalLitres'] = 0;
       updates['sensorData/consumer_node/flowRate'] = 0;
