@@ -24,6 +24,10 @@ FirebaseConfig config;
 static WiFiManager wifiManager;
 Ticker blinker;
 
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2
+#endif
+
 void blink() {
   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
@@ -47,9 +51,6 @@ unsigned long theftCheckMillis = 0;
 #define TDS_PIN 32
 #define FLOW_SENSOR_PIN 27  // Standard Flow Sensor Signal Pin
 
-#ifndef LED_BUILTIN
-#define LED_BUILTIN 2
-#endif
 
 float turbidityThreshold = 3.15;
 
@@ -258,6 +259,19 @@ void loop() {
     }
     
     consumerTotalLitres = totalConsumer;
+    
+    // Read tamper status from consumers
+    bool rameshTamper = false;
+    bool priyaTamper = false;
+    if (Firebase.RTDB.getBool(&fbdo, "sensorData/consumer_node/tamperDetected")) {
+      rameshTamper = fbdo.boolData();
+    }
+    if (Firebase.RTDB.getBool(&fbdo, "sensorData/consumer_node_8266/tamperDetected")) {
+      priyaTamper = fbdo.boolData();
+    }
+
+    if (rameshTamper) Serial.println("🚨 ALERT: Tamper detected at Ramesh's node!");
+    if (priyaTamper) Serial.println("🚨 ALERT: Tamper detected at Priya's node!");
     
     // Theft Detection Logic:
     // If gov supplies significantly more than consumers are receiving

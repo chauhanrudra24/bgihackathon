@@ -193,7 +193,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
       {/* Tamper Alert */}
       {tamper && online && (
         <div className="tamper-alert">
-          <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED. Possible bypass or pipe cut.
+          <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED or DEVICE SHAKING/REMOVAL detected. Possible bypass or theft attempt.
         </div>
       )}
 

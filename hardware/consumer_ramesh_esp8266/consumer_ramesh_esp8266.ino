@@ -11,6 +11,9 @@
 
 #include <WiFiManager.h>
 #include <Ticker.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
 // =========================
@@ -30,6 +33,11 @@ void blink() {
   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
 
+Adafruit_MPU6050 mpu;
+bool mpuInitialized = false;
+unsigned long lastTamperTime = 0;
+float baseAccelX, baseAccelY, baseAccelZ;
+
 // Callback when entering config mode
 void configModeCallback (WiFiManager *myWiFiManager) {
   Serial.println("Entered config mode");
@@ -41,14 +49,14 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 // =========================
 // VALVE PIN
 // =========================
-#define RELAY_PIN D2   // Relay for Solenoid Valve (Standardized)
+#define RELAY_PIN D3   // Relay moved to D3 (GPIO0) to free D1/D2 for I2C
 #define RELAY_ON LOW   
 #define RELAY_OFF HIGH 
 
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D5 // 1/8" Flow Sensor Signal Pin (Fixed D2->D5)
+#define FLOW_SENSOR_PIN D6 // 1/8" Flow Sensor Signal Pin (Moved from D5 as it was broken)
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
@@ -138,7 +146,28 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   lastFlowCalc = millis();
 
-  Serial.println("Flow Sensor (1/8 inch) initialized on D5");
+  Serial.println("Flow Sensor (1/8 inch) initialized on D6");
+
+  // 5. Initialize MPU6050
+  Wire.begin(D2, D1); // SDA, SCL
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    mpuInitialized = false;
+  } else {
+    Serial.println("MPU6050 Found!");
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    mpuInitialized = true;
+    
+    // Get initial readings
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    baseAccelX = a.acceleration.x;
+    baseAccelY = a.acceleration.y;
+    baseAccelZ = a.acceleration.z;
+  }
+
   Serial.println("Setup complete!\n");
 }
 
@@ -215,13 +244,44 @@ void loop() {
     // =========================
     // TAMPER / BYPASS DETECTION
     // =========================
-    // If the valve is CLOSED but water is still flowing
+    bool flowTamper = false;
+    bool motionTamper = false;
+
+    // 1. Flow detection while valve is CLOSED
     if (!currentValveState && flowRate > 0.3) {
-      tamperDetected = true;
+      flowTamper = true;
       Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
-    } else if (currentValveState || flowRate < 0.1) {
-      tamperDetected = false;
     }
+
+    // 2. Motion / Shaking detection
+    if (mpuInitialized) {
+      sensors_event_t a, g, temp;
+      mpu.getEvent(&a, &g, &temp);
+
+      // Calculate magnitude of acceleration change
+      float diffX = abs(a.acceleration.x - baseAccelX);
+      float diffY = abs(a.acceleration.y - baseAccelY);
+      float diffZ = abs(a.acceleration.z - baseAccelZ);
+      
+      // If deviation is more than 3.5 m/s^2, consider it a shake
+      if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
+        motionTamper = true;
+        lastTamperTime = millis();
+        Serial.println("🚨 TAMPER ALERT: Motion/Shaking detected!");
+      }
+
+      // Keep alert active for 30 seconds after motion
+      if (millis() - lastTamperTime < 30000) {
+        motionTamper = true;
+      }
+      
+      // Update baseline slowly to account for slow tilts (drift)
+      baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
+      baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
+      baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
+    }
+
+    tamperDetected = flowTamper || motionTamper;
 
     lastFlowCalc = millis();
   }

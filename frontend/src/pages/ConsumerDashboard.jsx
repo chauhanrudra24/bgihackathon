@@ -299,8 +299,8 @@ const ConsumerDashboard = () => {
           <div className="theft-banner alert" style={{ marginBottom: '2rem' }}>
             <div className="theft-banner-icon">🚨</div>
             <div className="theft-banner-content">
-              <h3>UNAUTHORIZED FLOW</h3>
-              <p>Water flow detected while valve is CLOSED. Check for leaks or tampering.</p>
+              <h3>TAMPER ALERT</h3>
+              <p>Water flow detected while valve is CLOSED or DEVICE SHAKING/REMOVAL detected. Check your meter for interference.</p>
             </div>
           </div>
         )}
