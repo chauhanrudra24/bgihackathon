@@ -153,7 +153,8 @@ const ConsumerDashboard = () => {
 
   const isNodeOnline = (timestamp) => {
     if (!timestamp) return false;
-    return (Date.now() - timestamp) < 20000;
+    // 60 second threshold + drift tolerance
+    return Math.abs(Date.now() - timestamp) < 60000;
   };
 
   const myNodeOnline = isNodeOnline(myNodeData?.lastSeen);
@@ -164,20 +165,6 @@ const ConsumerDashboard = () => {
   // Water quality from gov node
   const renderQualityCard = (sensorData, title) => {
     const online = isNodeOnline(sensorData?.lastSeen);
-    if (!sensorData || !online) {
-      return (
-        <div className="node-container">
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
-            <h2>{title}</h2>
-            <span className="status offline">OFFLINE</span>
-          </div>
-          <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-            <h2 style={{ color: 'var(--warning)', margin: 0 }}>🔌 Main Plant Disconnected</h2>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>Waiting for Government Pumping Station to come back online...</p>
-          </div>
-        </div>
-      );
-    }
 
     const tdsConnected = sensorData.tdsConnected === true;
     const tds = tdsConnected ? (sensorData.tdsValue || 0) : 0;
@@ -230,7 +217,9 @@ const ConsumerDashboard = () => {
       <div className="node-container">
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
           <h2>{title}</h2>
-          <span className="status">● ONLINE</span>
+          <span className={`status ${online ? '' : 'offline'}`}>
+            {online ? '● ONLINE' : `🔌 OFFLINE (Seen ${sensorData.lastSeen ? new Date(sensorData.lastSeen).toLocaleTimeString() : 'Never'})`}
+          </span>
         </div>
         <div className="nodes-grid">
           <div className="card">

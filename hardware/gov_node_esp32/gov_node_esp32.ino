@@ -55,14 +55,14 @@ unsigned long theftCheckMillis = 0;
 float turbidityThreshold = 3.15;
 
 // =========================
-// FLOW SENSOR (YF-S201)
+// FLOW SENSOR (YF-S401)
 // =========================
 // Standard Flow Sensor: ~96 pulses per liter per minute
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 96.0; // Calibrated for YF-S401 (6mm ID)
+float flowCalibration = 98.0; // Calibrated for YF-S401 (6mm ID)
 
 // Theft Detection
 float govSupplyLitres = 0.0;     // Total litres from gov supply
