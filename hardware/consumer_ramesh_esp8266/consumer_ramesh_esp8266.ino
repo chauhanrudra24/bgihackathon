@@ -197,9 +197,16 @@ void loop() {
         // Force update RTDB immediately
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", 0);
+        Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
+        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
       }
 
-      // (Individual Emergency Trigger Removed - Use Physical Button)
+      // Check Individual Emergency Trigger (RESTORED)
+      json.get(jsonData, "consumer_node/triggerEmergency");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+        triggerEmergency();
+        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
+      }
     }
     yield();
   }

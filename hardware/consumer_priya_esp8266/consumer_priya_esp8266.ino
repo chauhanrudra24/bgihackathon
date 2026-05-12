@@ -162,8 +162,8 @@ void loop() {
     lastCmdCheck = millis();
     yield(); 
 
-    if (Firebase.RTDB.getJSON(&fbdo_cmd, "commands")) {
-      FirebaseJson &json = fbdo_cmd.jsonObject();
+    if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
+      FirebaseJson &json = fbdo.jsonObject();
       FirebaseJsonData jsonData;
       
       // Check System-wide Reset 
@@ -177,14 +177,15 @@ void loop() {
         emergencyActive = false;
         emergencySecondsRemaining = 0;
         // Force update
-        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node_8266/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
+        Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
       }
 
       // Check Individual Emergency Trigger
       json.get(jsonData, "consumer_node_8266/triggerEmergency");
       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node_8266/triggerEmergency", false);
+        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
       }
     }
     yield();
