@@ -119,6 +119,9 @@ void setup() {
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
+
+  // Set smaller response buffer size to save RAM
+  fbdo.setResponseSize(1024);
   
   // 3. Setup Valve Relay
   pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
@@ -162,20 +165,20 @@ void loop() {
     lastCmdCheck = millis();
     yield(); 
 
-    if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
+    if (Firebase.RTDB.getJSON(&fbdo, F("commands"))) {
       FirebaseJson &json = fbdo.jsonObject();
       FirebaseJsonData jsonData;
       bool didReset = false;
       
       // Check System-wide Reset OR Individual Reset
       bool resetReq = false;
-      json.get(jsonData, "resetAll");
+      json.get(jsonData, F("resetAll"));
       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
-      json.get(jsonData, "consumer_node_8266/reset");
+      json.get(jsonData, F("consumer_node_8266/reset"));
       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
 
       if (resetReq) {
-        Serial.println("🔄 RESET REQUESTED...");
+        Serial.println(F("🔄 RESET REQUESTED..."));
         totalLitres = 0;
         flowRate = 0;
         tamperDetected = false;
@@ -184,27 +187,27 @@ void loop() {
         emergencySecondsRemaining = 0;
         didReset = true;
         // Force update status
-        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
-        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
-        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/tamperDetected", false);
-        Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
-        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
+        Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
+        Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
+        Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
       }
 
       // Check Individual Emergency Trigger (SKIP if we just reset)
       if (!didReset) {
-        json.get(jsonData, "consumer_node_8266/triggerEmergency");
+        json.get(jsonData, F("consumer_node_8266/triggerEmergency"));
         if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
           triggerEmergency();
-          Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
+          Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
         }
         // Auto-deactivate emergency when command is cleared from dashboard
         if (emergencyActive && jsonData.success && jsonData.type == "boolean" && !jsonData.boolValue) {
-          Serial.println("🛑 Emergency deactivated via Firebase command.");
+          Serial.println(F("🛑 Emergency deactivated via Firebase command."));
           emergencyActive = false;
           emergencySecondsRemaining = 0;
-          Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
-          Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/emergencyValue", 0);
+          Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+          Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), 0);
         }
       }
     }
@@ -247,16 +250,13 @@ void loop() {
 
   // 4. Valve & Command Status Logic (Batch Fetch to reduce blocking)
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 2000)) {
-    lastValveCheckMillis = millis();
-    yield();
-
-    if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
+    lastValveCheckMillis = millis();    if (Firebase.RTDB.getJSON(&fbdo, F("commands"))) {
        FirebaseJson &json = fbdo.jsonObject();
        FirebaseJsonData jsonData;
        bool didReset = false;
        
        // System Reset
-       json.get(jsonData, "resetAll");
+       json.get(jsonData, F("resetAll"));
        if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
          totalLitres = 0;
          flowRate = 0;
@@ -266,23 +266,29 @@ void loop() {
          emergencySecondsRemaining = 0;
          didReset = true;
          // Force update
-         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
+         Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
+         Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
+         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
+         
+         // Immediate status sync to clear red alerts
+         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
        }
 
        // Check Individual Emergency Trigger (SKIP if we just reset)
        if (!didReset) {
-         json.get(jsonData, "consumer_node_8266/triggerEmergency");
+         json.get(jsonData, F("consumer_node_8266/triggerEmergency"));
          if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
             triggerEmergency();
-            Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
+            Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
          }
          // Auto-deactivate emergency when command is cleared from dashboard
          if (emergencyActive && jsonData.success && jsonData.type == "boolean" && !jsonData.boolValue) {
-            Serial.println("🛑 Emergency deactivated via Firebase command.");
+            Serial.println(F("🛑 Emergency deactivated via Firebase command."));
             emergencyActive = false;
             emergencySecondsRemaining = 0;
-            Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
-            Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/emergencyValue", 0);
+            Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+            Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), 0);
          }
        }
     }
@@ -290,8 +296,8 @@ void loop() {
     // Check Valves
     bool govState = true;
     bool userState = true;
-    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node_8266/gov")) govState = fbdo.boolData();
-    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node_8266/user")) userState = fbdo.boolData();
+    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node_8266/gov"))) govState = fbdo.boolData();
+    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node_8266/user"))) userState = fbdo.boolData();
     
     currentValveState = (govState && userState) || emergencyActive;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
@@ -303,16 +309,16 @@ void loop() {
   // 5. Sync Data (every 5 seconds)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
     sendDataPrevMillis = millis();
-    Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/tamperDetected", tamperDetected);
-    Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/valveState", currentValveState);
-    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node_8266/lastSeen");
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), tamperDetected);
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/valveState"), currentValveState);
+    Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node_8266/lastSeen"));
     
-    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", totalLitres);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), flowRate);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), totalLitres);
     
     // Emergency Status
-    Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", emergencyActive);
-    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/emergencyValue", emergencySecondsRemaining);
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySecondsRemaining);
     
     Serial.printf("Status Sent | Valve: %s | Tamper: %s | Emergency: %s\n", 
                   currentValveState ? "OPEN" : "CLOSED", 
