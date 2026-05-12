@@ -186,7 +186,7 @@ void loop() {
       }
       
       // Sensitive noise floor
-      if (flowRate < 0.1) flowRate = 0;
+      if (flowRate < 0.05) flowRate = 0;
     } else {
       flowRate = 0;
     }

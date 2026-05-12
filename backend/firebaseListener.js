@@ -1,5 +1,6 @@
 const { initializeApp } = require('firebase/app');
 const { getDatabase, ref, onValue } = require('firebase/database');
+const mongoose = require('mongoose');
 const SensorData = require('./models/SensorData');
 
 module.exports = function(io) {
@@ -23,27 +24,32 @@ module.exports = function(io) {
   onValue(sensorRef, async (snapshot) => {
     const data = snapshot.val();
     if (data) {
+      console.log('📡 Firebase Update Received:', new Date().toLocaleTimeString());
+      console.log('📊 Data Structure:', JSON.stringify(data).substring(0, 200) + '...');
+      
+      // Emit the parsed data to React clients IMMEDIATELY for real-time feel
+      // We emit even if MongoDB is down, so the dashboard stays "Live"
+      io.emit('sensor-update', {
+        ...data,
+        timestamp: new Date().toISOString()
+      });
+
       // Throttle saving to MongoDB to avoid spamming (e.g. max once every 5 seconds)
       const now = Date.now();
-      if (now - lastSavedTime > 4000) {
+      if (now - lastSavedTime > 5000) {
         try {
-          const newReading = new SensorData({
-            tdsValue: data.tdsValue,
-            turbidityVoltage: data.turbidityVoltage,
-            waterStatus: data.waterStatus
-          });
-          await newReading.save();
-          lastSavedTime = now;
-          
-          // Emit the parsed data to React clients
-          io.emit('sensor-update', {
-            tdsValue: data.tdsValue,
-            turbidityVoltage: data.turbidityVoltage,
-            waterStatus: data.waterStatus,
-            timestamp: newReading.timestamp
-          });
+          if (mongoose.connection.readyState === 1) { // 1 = Connected
+            const newReading = new SensorData({
+              tdsValue: data.tdsValue || 0,
+              turbidityVoltage: data.turbidityVoltage || 0,
+              waterStatus: data.waterStatus || 'UNKNOWN'
+            });
+            await newReading.save();
+            lastSavedTime = now;
+            console.log('💾 Data archived to MongoDB');
+          }
         } catch (err) {
-          console.error('Error saving firebase data to MongoDB:', err.message);
+          console.error('❌ Error archiving to MongoDB:', err.message);
         }
       }
     }

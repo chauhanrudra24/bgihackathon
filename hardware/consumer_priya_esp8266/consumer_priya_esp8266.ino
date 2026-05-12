@@ -36,9 +36,9 @@ unsigned long lastValveCheckMillis = 0;
 // =========================
 #define FLOW_SENSOR_PIN D5  // 1/8" Flow Sensor Signal Pin
 
-// 1/8" Flow Sensor calibration: ~21 pulses per litre (varies by model)
+// Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 98.0  // pulses per second per L/min (Standard for YF-S401 / small G1/8)
+#define FLOW_CALIBRATION 98.0  // F = 98 * Q (L/min)
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
@@ -175,8 +175,8 @@ void loop() {
         flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
       
-      // Sensitive noise floor
-      if (flowRate < 0.05) flowRate = 0;
+      // High-sensitivity noise floor for 1/8" sensor
+      if (flowRate < 0.01) flowRate = 0;
     } else {
       flowRate = 0;
     }

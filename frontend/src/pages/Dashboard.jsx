@@ -402,7 +402,6 @@ const Dashboard = () => {
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
-  const [countdown, setCountdown] = useState(5);
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
 
@@ -445,16 +444,6 @@ const Dashboard = () => {
     };
   }, [navigate]);
 
-  // ===== LIVE SYNC COUNTDOWN =====
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === 0) return 5; // Reset to 5 after showing 0/Syncing
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // ===== AUTO THEFT DETECTION =====
   // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
@@ -504,18 +493,26 @@ const Dashboard = () => {
   };
 
   const handleResetAllData = async () => {
+    if (!data || !data.gov_node) {
+      alert("⚠️ Cannot reset: No live connection to sensor data.");
+      return;
+    }
+
     if (!window.confirm("⚠️ Are you sure you want to RESET ALL DATA? This will set all total litres to zero across all nodes and start fresh.")) {
       return;
     }
+
+    const currentGovNode = data.gov_node;
+    const currentTheftStatus = currentGovNode.theftStatus || 'NORMAL';
 
     try {
       // 0. Store current session as "static data" in Firestore History before clearing
       const historyData = {
         timestamp: serverTimestamp(),
-        totalGovSupply: govNode.govSupplyLitres || 0,
-        totalConsumerUsage: govNode.consumerTotalLitres || 0,
-        unaccountedLoss: govNode.flowDifference || 0,
-        theftStatus: theftStatus,
+        totalGovSupply: currentGovNode.govSupplyLitres || 0,
+        totalConsumerUsage: currentGovNode.consumerTotalLitres || 0,
+        unaccountedLoss: currentGovNode.flowDifference || 0,
+        theftStatus: currentTheftStatus,
         nodes: CONSUMER_NODES.map(node => ({
           nodeId: node.nodeId,
           name: node.name,
@@ -523,44 +520,49 @@ const Dashboard = () => {
           balanceAtReset: accounts[node.nodeId]?.balance || 500
         }))
       };
-      await addDoc(collection(firestore, "system_history"), historyData);
-      console.log("Session data archived to Firestore.");
+      
+      try {
+        await addDoc(collection(firestore, "system_history"), historyData);
+        console.log("Session data archived to Firestore.");
+      } catch (fsErr) {
+        console.warn("Firestore archive failed, but continuing with reset:", fsErr);
+      }
 
       // 1. Send reset command to hardware
       await set(ref(db, 'commands/resetAll'), true);
       
       // 2. Clear totals and flow rates in RTDB immediately for snappy UI
-      await set(ref(db, 'sensorData/gov_node/totalLitres'), 0);
-      await set(ref(db, 'sensorData/gov_node/flowRate'), 0);
-      await set(ref(db, 'sensorData/gov_node/govSupplyLitres'), 0);
-      await set(ref(db, 'sensorData/gov_node/consumerTotalLitres'), 0);
-      await set(ref(db, 'sensorData/gov_node/flowDifference'), 0);
+      const updates = {};
+      updates['sensorData/gov_node/totalLitres'] = 0;
+      updates['sensorData/gov_node/flowRate'] = 0;
+      updates['sensorData/gov_node/govSupplyLitres'] = 0;
+      updates['sensorData/gov_node/consumerTotalLitres'] = 0;
+      updates['sensorData/gov_node/flowDifference'] = 0;
+      updates['sensorData/gov_node/theftStatus'] = 'NORMAL';
       
-      await set(ref(db, 'sensorData/consumer_node/totalLitres'), 0);
-      await set(ref(db, 'sensorData/consumer_node/flowRate'), 0);
-      await set(ref(db, 'sensorData/consumer_node_8266/totalLitres'), 0);
-      await set(ref(db, 'sensorData/consumer_node_8266/flowRate'), 0);
+      updates['sensorData/consumer_node/totalLitres'] = 0;
+      updates['sensorData/consumer_node/flowRate'] = 0;
+      updates['sensorData/consumer_node_8266/totalLitres'] = 0;
+      updates['sensorData/consumer_node_8266/flowRate'] = 0;
 
       // 3. Reset Accounts (Balance to 500) and Valves (Unblock everyone)
       for (const node of CONSUMER_NODES) {
         const { nodeId } = node;
-        await set(ref(db, `accounts/${nodeId}`), {
-          balance: 500,
-          blocked: false,
-          theftFlagged: false,
-          theftReason: null,
-          theftTime: null
-        });
-        await set(ref(db, `valves/${nodeId}`), {
-          gov: true,
-          user: true
-        });
+        updates[`accounts/${nodeId}/balance`] = 500;
+        updates[`accounts/${nodeId}/blocked`] = false;
+        updates[`accounts/${nodeId}/theftFlagged`] = false;
+        updates[`accounts/${nodeId}/theftReason`] = null;
+        updates[`accounts/${nodeId}/theftTime`] = null;
+        updates[`valves/${nodeId}/gov`] = true;
+        updates[`valves/${nodeId}/user`] = true;
       }
 
-      // 4. Reset Government Node Stats
-      await set(ref(db, 'sensorData/gov_node/theftStatus'), 'NORMAL');
+      // Perform all updates in one go (more efficient)
+      // Note: In Firebase modular SDK, you'd use 'update' but here we can just set them
+      // To keep it simple and consistent with your style, I'll keep individual sets but as a promise array
+      await Promise.all(Object.entries(updates).map(([path, val]) => set(ref(db, path), val)));
 
-      // 5. Turn off reset flag after 3 seconds
+      // 4. Turn off reset flag after 3 seconds
       setTimeout(() => {
         set(ref(db, 'commands/resetAll'), false);
       }, 3000);
@@ -568,7 +570,7 @@ const Dashboard = () => {
       alert("✅ Reset command sent. System starting fresh!");
     } catch (err) {
       console.error("Reset failed:", err);
-      alert("❌ Reset failed. Check console.");
+      alert("❌ Reset failed: " + err.message);
     }
   };
 
@@ -683,11 +685,38 @@ const Dashboard = () => {
 
   const renderAnalytics = () => (
     <div className="main-content">
-      <div className="card" style={{ padding: '4rem', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '2rem' }}>📈 Supply Trends</h2>
-        <p style={{ color: 'var(--text-secondary)' }}>Advanced analytics and consumption history charts will be visible here.</p>
-        <div style={{ marginTop: '2rem', height: '200px', background: 'var(--bg-color)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: 'var(--text-muted)' }}>[ Trend Analysis Placeholder ]</span>
+      <div className="card">
+        <h2>📡 Live Network Feed</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Real-time heartbeat monitoring for all network nodes.</p>
+        
+        <div className="theft-list-container" style={{ background: 'var(--bg-color)', padding: '1rem' }}>
+          {/* Main Gov Node */}
+          <div className="theft-item" style={{ borderLeft: '4px solid var(--primary)' }}>
+            <div className="theft-item-info">
+              <h4>🏢 Rau Pumping Station</h4>
+              <p style={{ fontSize: '0.8rem' }}>Status: {isNodeOnline(govNode) ? '🟢 Online' : '🔴 Offline'}</p>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Last Seen: {govNode.lastSeen ? new Date(govNode.lastSeen).toLocaleTimeString() : 'Never'}
+            </div>
+          </div>
+
+          {/* Consumer Nodes */}
+          {CONSUMER_NODES.map(({ nodeId, name }) => {
+            const nodeData = data[nodeId];
+            const online = isNodeOnline(nodeData);
+            return (
+              <div className="theft-item" key={nodeId} style={{ borderLeft: `4px solid ${online ? 'var(--success)' : 'var(--danger)'}` }}>
+                <div className="theft-item-info">
+                  <h4>🏠 {name}</h4>
+                  <p style={{ fontSize: '0.8rem' }}>Status: {online ? '🟢 Online' : '🔴 Offline'}</p>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Last Seen: {nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -773,11 +802,6 @@ const Dashboard = () => {
             consumerTotal={govNode.consumerTotalLitres}
             difference={govNode.flowDifference}
           />
-
-          <div className="update-timer">
-              {countdown > 0 ? `Refresh in ` : ''} 
-              <span>{countdown > 0 ? `${countdown}s` : 'Syncing...'}</span>
-          </div>
 
           {activeTab === 'dashboard' && renderDashboard()}
           {activeTab === 'analytics' && renderAnalytics()}

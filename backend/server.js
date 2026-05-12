@@ -25,12 +25,16 @@ io.on('connection', (socket) => {
 // Database Connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log('MongoDB Connected');
+    console.log('✅ MongoDB Connected');
     seedAdmin();
-    // Start listening to Firebase after MongoDB connects
-    require('./firebaseListener')(io);
   })
-  .catch(err => console.log(err));
+  .catch(err => {
+    console.error('❌ MongoDB Connection Error:', err.message);
+    console.log('⚠️ Running in DB-less mode. Real-time Firebase bridge will still work.');
+  });
+
+// Start listening to Firebase immediately (Bridge to Socket.io)
+require('./firebaseListener')(io);
 
 // Seed default admin if none exists
 async function seedAdmin() {

@@ -10,7 +10,6 @@ const ConsumerDashboard = () => {
   const [account, setAccount] = useState({ balance: 500 });
   const [ratePerLitre, setRatePerLitre] = useState(0.5);
   const [errorMsg, setErrorMsg] = useState('');
-  const [countdown, setCountdown] = useState(5);
   const [showRechargeModal, setShowRechargeModal] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -37,7 +36,6 @@ const ConsumerDashboard = () => {
       const govNewData = snapshot.val();
       if (govNewData) {
         setGovData(govNewData);
-        setCountdown(5);
       }
     }, (error) => {
       setErrorMsg('Firebase Error: ' + error.message);
@@ -111,12 +109,6 @@ const ConsumerDashboard = () => {
     setPrevLitres(currentLitres);
   }, [myNodeData?.totalLitres]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCountdown(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -434,9 +426,6 @@ const ConsumerDashboard = () => {
           {renderQualityCard(govData, "Rau Pumping Station (BGI Indore Area)")}
         </section>
 
-        <div className="update-timer">
-            Refresh in <span>{countdown}s</span>
-        </div>
 
         {/* ===== RAZORPAY RECHARGE MODAL ===== */}
         {showRechargeModal && (
