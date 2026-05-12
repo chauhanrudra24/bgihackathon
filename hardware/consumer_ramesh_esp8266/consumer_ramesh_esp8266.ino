@@ -184,14 +184,19 @@ void loop() {
     triggerEmergency();
   }
 
-  // 1. Check for Reset/Emergency Command
+  // 1. Check for Reset/Emergency Command (Batch Fetch to reduce blocking)
   static unsigned long lastCmdCheck = 0;
-  if (Firebase.ready() && (millis() - lastCmdCheck > 800)) {
+  if (Firebase.ready() && (millis() - lastCmdCheck > 2000)) { // Increased to 2s to be safer
     lastCmdCheck = millis();
+    yield(); 
 
-    // Reset All Command
-    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/resetAll")) {
-      if (fbdo_cmd.boolData()) {
+    if (Firebase.RTDB.getJSON(&fbdo_cmd, "commands")) {
+      FirebaseJson &json = fbdo_cmd.jsonObject();
+      FirebaseJsonData jsonData;
+      
+      // Check System-wide Reset
+      json.get(jsonData, "resetAll");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         Serial.println("🔄 SYSTEM RESET REQUESTED...");
         totalLitres = 0;
         flowRate = 0;
@@ -204,17 +209,15 @@ void loop() {
         Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/flowRate", 0);
       }
-    }
 
-    // Individual Emergency Trigger from Dashboard
-    if (Firebase.RTDB.getBool(&fbdo_cmd,
-                              "commands/consumer_node/triggerEmergency")) {
-      if (fbdo_cmd.boolData()) {
+      // Check Individual Emergency Trigger
+      json.get(jsonData, "consumer_node/triggerEmergency");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo_cmd,
-                              "commands/consumer_node/triggerEmergency", false);
+        Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node/triggerEmergency", false);
       }
     }
+    yield();
   }
 
   // 2. Regular flow calculations

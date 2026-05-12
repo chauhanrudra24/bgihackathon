@@ -61,6 +61,17 @@ bool emergencyActive = false;
 int emergencySecondsRemaining = 0;
 unsigned long lastEmergencyDec = 0;
 
+// =========================
+// FLOW SENSOR (YF-S401 6mm)
+// =========================
+#define FLOW_SENSOR_PIN D6  // Standardized wiring
+#define FLOW_CALIBRATION 98.0 // 5880 pulses/L
+volatile unsigned long pulseCount = 0;
+float flowRate = 0.0;
+float totalLitres = 0.0;
+unsigned long lastFlowCalc = 0;
+float flowCalibration = 98.0;
+
 // Tamper detection
 bool tamperDetected = false;
 bool currentValveState = false;
@@ -144,7 +155,21 @@ void setup() {
     baseAccelZ = a.acceleration.z;
   }
 
+  // 5. Setup Flow Sensor
+  pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
+
   Serial.println("Setup complete!\n");
+}
+
+// ISR for flow sensor
+volatile unsigned long lastPulseTime = 0;
+void ICACHE_RAM_ATTR flowPulseISR() {
+  unsigned long now = micros();
+  if (now - lastPulseTime > 200) {
+    pulseCount++;
+    lastPulseTime = now;
+  }
 }
 
 void loop() {
@@ -211,17 +236,72 @@ void loop() {
     baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
   }
 
-  // 4. Valve Status Logic
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000)) {
+  // 4. Valve & Command Status Logic (Batch Fetch to reduce blocking)
+  if (Firebase.ready() && (millis() - lastValveCheckMillis > 2000)) {
     lastValveCheckMillis = millis();
+    yield();
+
+    if (Firebase.RTDB.getJSON(&fbdo1, "commands")) {
+       FirebaseJson &json = fbdo1.jsonObject();
+       FirebaseJsonData jsonData;
+       
+       // System Reset
+       json.get(jsonData, "resetAll");
+       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+         totalLitres = 0;
+         flowRate = 0;
+         pulseCount = 0;
+         tamperDetected = false;
+         lastTamperTime = 0;
+         // Force update
+         Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/totalLitres", 0);
+       }
+
+       // Individual Emergency
+       json.get(jsonData, "consumer_node_8266/triggerEmergency");
+       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+          emergencyActive = true;
+          emergencySecondsRemaining = 60; // 1 min override
+          Firebase.RTDB.setBool(&fbdo1, "commands/consumer_node_8266/triggerEmergency", false);
+       }
+    }
+
+    // Check Valves
     bool govState = true;
     bool userState = true;
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/gov")) govState = fbdo1.boolData();
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/user")) userState = fbdo1.boolData();
     
-    // Logic: (Gov & User) OR Emergency Override
     currentValveState = (govState && userState) || emergencyActive;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+    yield();
+  }
+
+  // 5. Regular flow calculations
+  if (millis() - lastFlowCalc >= 1000) {
+    unsigned long pulseCopy;
+    unsigned long elapsedMs = millis() - lastFlowCalc;
+    noInterrupts();
+    pulseCopy = pulseCount;
+    pulseCount = 0;
+    interrupts();
+    float elapsedSec = elapsedMs / 1000.0;
+
+    if (elapsedSec > 0) {
+      float hz = pulseCopy / elapsedSec;
+      float rawFlow = hz / flowCalibration;
+      if (rawFlow > 40.0) rawFlow = 0;
+      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
+      if (flowRate < 0.05) flowRate = 0;
+    } else {
+      flowRate = 0;
+    }
+
+    float pulsesPerLitre = flowCalibration * 60.0;
+    if (pulsesPerLitre > 0) {
+      totalLitres += (float)pulseCopy / pulsesPerLitre;
+    }
+    lastFlowCalc = millis();
   }
 
   // 5. Sync Data (every 5 seconds — valve-only node doesn't need 1s updates)
@@ -231,8 +311,8 @@ void loop() {
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/valveState", currentValveState);
     Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen");
     
-    // Explicitly set flowRate to 0 since sensor is removed (prevents false theft flagging)
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", 0);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", flowRate);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/totalLitres", totalLitres);
     
     // Emergency Status
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/emergencyActive", emergencyActive);
