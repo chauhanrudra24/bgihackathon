@@ -185,16 +185,13 @@ const NodeCard = ({ title, nodeData }) => {
 // =========================
 // CONSUMER VALVE + FLOW CARD
 // =========================
-const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, lastResetTime }) => {
+const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, isResetting }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
   const balance = account?.balance ?? 500;
   const blocked = account?.blocked || false;
-  
-  // Suppress emergency alert if we just performed a reset (within 3 seconds)
-  const isResetting = Date.now() - lastResetTime < 3000;
-  const emergencyActive = !isResetting && (nodeData?.emergencyActive || false);
+  const emergencyActive = nodeData?.emergencyActive || false;
   const emergencyValue = Number(nodeData?.emergencyValue) || 0;
   const hasSensor = nodeId === 'consumer_node'; // Logic to distinguish Ramesh vs Priya
 
@@ -205,15 +202,15 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
   };
 
   return (
-    <div className={`consumer-full-card ${tamper || theftFlagged ? 'tamper-active' : ''} ${emergencyActive ? 'emergency-mode' : ''}`} id={`consumer-card-${nodeId}`}>
+    <div className={`consumer-full-card ${!isResetting && (tamper || theftFlagged) ? 'tamper-active' : ''} ${!isResetting && emergencyActive ? 'emergency-mode' : ''}`} id={`consumer-card-${nodeId}`}>
       {/* Emergency Active Alert */}
-      {emergencyActive && online && (
+      {emergencyActive && online && !isResetting && (
         <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
           <span>🆘 EMERGENCY OVERRIDE ACTIVE</span> — Granting free water access ({hasSensor ? `${emergencyValue.toFixed(2)} L remaining` : `${Math.floor(emergencyValue)}s remaining`}).
         </div>
       )}
       {/* Tamper Alert */}
-      {tamper && online && (
+      {tamper && online && !isResetting && (
         <div className="tamper-alert">
           <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED or DEVICE SHAKING/REMOVAL detected. Possible bypass or theft attempt.
         </div>
@@ -433,7 +430,7 @@ const Dashboard = () => {
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
   const [commands, setCommands] = useState({});
-  const [lastResetTime, setLastResetTime] = useState(0);
+  const [isResetting, setIsResetting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
@@ -487,7 +484,7 @@ const Dashboard = () => {
   // ===== AUTO THEFT DETECTION =====
   // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
   useEffect(() => {
-    if (!data || commands.resetAll) return; // SKIP THEFT CHECK DURING RESET
+    if (!data || commands.resetAll || isResetting) return; // SKIP THEFT CHECK DURING RESET
     const govNode = data.gov_node;
     const govOnline = isNodeOnline(govNode);
     // If gov supply is active (>2L/min), consumer is online, valve is open, but consumer flow is zero → flag
@@ -542,6 +539,8 @@ const Dashboard = () => {
 
     const currentGovNode = data.gov_node;
     const currentTheftStatus = currentGovNode.theftStatus || 'NORMAL';
+
+    setIsResetting(true); // START LOCAL GUARD
 
     try {
       // 0. Store current session as "static data" in Firestore History before clearing
@@ -604,8 +603,6 @@ const Dashboard = () => {
         updates[`commands/${nodeId}/triggerEmergency`] = false;
       }
 
-      setLastResetTime(Date.now());
-
       // Perform all updates in one go (more efficient)
       // Note: In Firebase modular SDK, you'd use 'update' but here we can just set them
       // To keep it simple and consistent with your style, I'll keep individual sets but as a promise array
@@ -614,6 +611,8 @@ const Dashboard = () => {
       // 4. Turn off reset flag after 3 seconds
       setTimeout(() => {
         set(ref(db, 'commands/resetAll'), false);
+        // KEEP GUARD ACTIVE FOR 5 SECONDS TO ALLOW HARDWARE REBOOT
+        setTimeout(() => setIsResetting(false), 5000);
       }, 3000);
 
       alert("✅ Reset command sent. System starting fresh!");
@@ -725,7 +724,7 @@ const Dashboard = () => {
               account={accounts[nodeId] || { balance: 500 }}
               onToggleValve={() => set(ref(db, `valves/${nodeId}/gov`), !(valves[nodeId]?.gov ?? true))}
               onBlockToggle={() => handleBlockToggle(nodeId)}
-              lastResetTime={lastResetTime}
+              isResetting={isResetting}
             />
           ))}
         </div>
