@@ -59,15 +59,11 @@ int emergencySecondsRemaining = 0;
 unsigned long lastEmergencyDec = 0;
 
 // =========================
-// FLOW SENSOR (YF-S401 6mm)
+// FLOW SENSOR — NOT INSTALLED on Priya node (valve-only)
+// Variables kept for Firebase compatibility (always report 0)
 // =========================
-#define FLOW_SENSOR_PIN D6  // Standardized wiring
-#define FLOW_CALIBRATION 98.0 // 5880 pulses/L
-volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;
 float totalLitres = 0.0;
-unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0;
 
 // Tamper detection
 bool tamperDetected = false;
@@ -81,6 +77,8 @@ void triggerEmergency() {
     lastEmergencyDec = millis();
   }
 }
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -146,22 +144,11 @@ void setup() {
     baseAccelZ = a.acceleration.z;
   }
 
-  // 5. Setup Flow Sensor
-  pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
+  // 5. Flow Sensor — NOT INSTALLED on Priya (no pin setup needed)
 
   Serial.println("Setup complete!\n");
 }
 
-// ISR for flow sensor
-volatile unsigned long lastPulseTime = 0;
-void ICACHE_RAM_ATTR flowPulseISR() {
-  unsigned long now = micros();
-  if (now - lastPulseTime > 200) {
-    pulseCount++;
-    lastPulseTime = now;
-  }
-}
 
 void loop() {
 
@@ -253,7 +240,6 @@ void loop() {
        if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
          totalLitres = 0;
          flowRate = 0;
-         pulseCount = 0;
          tamperDetected = false;
          lastTamperTime = 0;
          // Force update
@@ -280,32 +266,7 @@ void loop() {
     yield();
   }
 
-  // 5. Regular flow calculations
-  if (millis() - lastFlowCalc >= 1000) {
-    unsigned long pulseCopy;
-    unsigned long elapsedMs = millis() - lastFlowCalc;
-    noInterrupts();
-    pulseCopy = pulseCount;
-    pulseCount = 0;
-    interrupts();
-    float elapsedSec = elapsedMs / 1000.0;
-
-    if (elapsedSec > 0) {
-      float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / flowCalibration;
-      if (rawFlow > 40.0) rawFlow = 0;
-      flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
-      if (flowRate < 0.05) flowRate = 0;
-    } else {
-      flowRate = 0;
-    }
-
-    float pulsesPerLitre = flowCalibration * 60.0;
-    if (pulsesPerLitre > 0) {
-      totalLitres += (float)pulseCopy / pulsesPerLitre;
-    }
-    lastFlowCalc = millis();
-  }
+  // 5. Flow sensor not installed — flowRate and totalLitres stay at 0
 
   // 5. Sync Data (every 5 seconds — valve-only node doesn't need 1s updates)
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
