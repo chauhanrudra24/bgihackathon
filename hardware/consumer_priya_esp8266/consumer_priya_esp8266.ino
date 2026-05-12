@@ -224,15 +224,23 @@ void loop() {
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
   }
 
-  // 5. Sync Data
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 1000)) {
+  // 5. Sync Data (every 5 seconds — valve-only node doesn't need 1s updates)
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
     sendDataPrevMillis = millis();
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/tamperDetected", tamperDetected);
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/valveState", currentValveState);
     Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen");
     
+    // Explicitly set flowRate to 0 since sensor is removed (prevents false theft flagging)
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", 0);
+    
     // Emergency Status
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/emergencyActive", emergencyActive);
     Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/emergencyValue", emergencySecondsRemaining);
+    
+    Serial.printf("Status Sent | Valve: %s | Tamper: %s | Emergency: %s\n", 
+                  currentValveState ? "OPEN" : "CLOSED", 
+                  tamperDetected ? "YES" : "No",
+                  emergencyActive ? "ACTIVE" : "Off");
   }
 }

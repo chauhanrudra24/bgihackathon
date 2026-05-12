@@ -167,7 +167,7 @@ const ConsumerDashboard = () => {
   const tamperDetected = myNodeData?.tamperDetected || false;
   const balance = account?.balance ?? 500;
   const emergencyActive = myNodeData?.emergencyActive || false;
-  const emergencyValue = myNodeData?.emergencyValue || 0;
+  const emergencyValue = Number(myNodeData?.emergencyValue) || 0;
   const isBlocked = (account?.blocked || account?.theftFlagged || balance <= 0) && !emergencyActive;
 
   // Water quality from gov node
@@ -325,6 +325,17 @@ const ConsumerDashboard = () => {
           </div>
         )}
 
+        {/* Zero Balance Alert */}
+        {balance <= 0 && !account.theftFlagged && !emergencyActive && (
+          <div className="theft-banner suspicious" style={{ marginBottom: '2rem' }}>
+            <div className="theft-banner-icon">💳</div>
+            <div className="theft-banner-content">
+              <h3>ZERO BALANCE — SUPPLY SUSPENDED</h3>
+              <p>Your prepaid balance is ₹0. Please recharge your account to restore water supply. Click the "Recharge" button above.</p>
+            </div>
+          </div>
+        )}
+
         {/* Gov Supply Alert */}
         {!valveData.gov && myNodeOnline && !account.theftFlagged && balance > 0 && (
           <div className="theft-banner suspicious" style={{ marginBottom: '2rem' }}>
@@ -349,8 +360,7 @@ const ConsumerDashboard = () => {
           <div className="card" style={{ 
             marginBottom: '1.5rem', 
             background: isBlocked ? 'var(--bg-color)' : !valveData.gov ? 'var(--bg-color)' : 'linear-gradient(135deg, var(--surface-color), var(--primary-light))', 
-            border: isBlocked ? '2px solid var(--danger)' : !valveData.gov ? '1px solid var(--border-color)' : '1px solid var(--primary)',
-            opacity: isBlocked || !valveData.gov ? 0.8 : 1
+            border: isBlocked ? '2px solid var(--danger)' : !valveData.gov ? '1px solid var(--border-color)' : '1px solid var(--primary)'
           }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div className="valve-info">
@@ -372,10 +382,11 @@ const ConsumerDashboard = () => {
               </div>
           </div>
 
-          {/* Flow Data Cards / Emergency Display */}
+          {/* Flow Data Cards — ALWAYS visible when online */}
           {myNodeOnline ? (
             <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-              {emergencyActive ? (
+              {/* Emergency SOS Card (shown alongside flow data, not replacing it) */}
+              {emergencyActive && (
                 <div className="card" style={{ gridColumn: '1 / -1', background: 'rgba(239, 68, 68, 0.05)', border: '2px dashed #ef4444' }}>
                    <div style={{ textAlign: 'center', padding: '1rem' }}>
                       <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER REMAINING</h3>
@@ -385,43 +396,41 @@ const ConsumerDashboard = () => {
                       </div>
                    </div>
                 </div>
-              ) : (
-                <>
-                  {user.hasSensor !== false && (
-                    <>
-                      <div className="card">
-                        <h3>Current Flow</h3>
-                        <div className="value" style={{ fontSize: '1.8rem' }}>
-                          {(myNodeData?.flowRate || 0).toFixed(1)}
-                          <span className="unit">L/min</span>
-                        </div>
-                        {myNodeData?.flowRate > 0 && (
-                          <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
-                            <span className="flow-dot"></span> Flowing
-                          </div>
-                        )}
-                      </div>
+              )}
 
-                      <div className="card">
-                        <h3>Total Usage</h3>
-                        <div className="value" style={{ fontSize: '1.8rem' }}>
-                          {(myNodeData?.totalLitres || 0).toFixed(1)}
-                          <span className="unit">L</span>
-                        </div>
-                        <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
+              {user.hasSensor !== false && (
+                <>
+                  <div className="card">
+                    <h3>Current Flow</h3>
+                    <div className="value" style={{ fontSize: '1.8rem' }}>
+                      {(myNodeData?.flowRate || 0).toFixed(1)}
+                      <span className="unit">L/min</span>
+                    </div>
+                    {myNodeData?.flowRate > 0 && (
+                      <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
+                        <span className="flow-dot"></span> Flowing
                       </div>
-                    </>
-                  )}
+                    )}
+                  </div>
 
                   <div className="card">
-                    <h3>Est. Cost</h3>
+                    <h3>Total Usage</h3>
                     <div className="value" style={{ fontSize: '1.8rem' }}>
-                      ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
+                      {(myNodeData?.totalLitres || 0).toFixed(1)}
+                      <span className="unit">L</span>
                     </div>
-                    <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
+                    <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
                   </div>
                 </>
               )}
+
+              <div className="card">
+                <h3>Est. Cost</h3>
+                <div className="value" style={{ fontSize: '1.8rem' }}>
+                  ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
+                </div>
+                <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
+              </div>
             </div>
           ) : (
             <div className="card" style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-color)' }}>

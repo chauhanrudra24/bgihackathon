@@ -62,7 +62,7 @@ float emergencyValueRemaining = 0.0;
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D5 
+#define FLOW_SENSOR_PIN D6
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
@@ -121,7 +121,7 @@ void setup() {
   }
 
   blinker.detach();
-  digitalWrite(LED_BUILTIN, LOW); 
+  digitalWrite(LED_BUILTIN, LOW);
 
   // 1.5 Setup OTA
   ArduinoOTA.setHostname("Consumer_Ramesh");
@@ -150,7 +150,8 @@ void setup() {
 
   // 4. Setup Flow Sensor
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR,
+                  FALLING);
   lastFlowCalc = millis();
 
   // 5. Initialize MPU6050
@@ -187,20 +188,31 @@ void loop() {
   static unsigned long lastCmdCheck = 0;
   if (Firebase.ready() && (millis() - lastCmdCheck > 800)) {
     lastCmdCheck = millis();
-    
+
     // Reset All Command
     if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/resetAll")) {
       if (fbdo_cmd.boolData()) {
-        totalLitres = 0; flowRate = 0; pulseCount = 0;
-        emergencyActive = false; emergencyValueRemaining = 0;
+        Serial.println("🔄 SYSTEM RESET REQUESTED...");
+        totalLitres = 0;
+        flowRate = 0;
+        pulseCount = 0;
+        tamperDetected = false;
+        lastTamperTime = 0;
+        emergencyActive = false;
+        emergencyValueRemaining = 0;
+        // Force update RTDB immediately
+        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/flowRate", 0);
       }
     }
 
     // Individual Emergency Trigger from Dashboard
-    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/consumer_node/triggerEmergency")) {
+    if (Firebase.RTDB.getBool(&fbdo_cmd,
+                              "commands/consumer_node/triggerEmergency")) {
       if (fbdo_cmd.boolData()) {
         triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node/triggerEmergency", false);
+        Firebase.RTDB.setBool(&fbdo_cmd,
+                              "commands/consumer_node/triggerEmergency", false);
       }
     }
   }
@@ -218,13 +230,15 @@ void loop() {
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / flowCalibration;
-      if (rawFlow > 40.0) rawFlow = 0;
+      if (rawFlow > 40.0)
+        rawFlow = 0;
       if (pulseCopy == 0) {
         flowRate = flowRate * 0.7;
       } else {
         flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
-      if (flowRate < 0.01) flowRate = 0;
+      if (flowRate < 0.01)
+        flowRate = 0;
     } else {
       flowRate = 0;
     }
@@ -248,8 +262,19 @@ void loop() {
       }
     }
 
-    // Tamper Detection
+    // =========================
+    // TAMPER / BYPASS DETECTION
+    // =========================
+    bool flowTamper = false;
     bool motionTamper = false;
+
+    // 1. Flow detection while valve is CLOSED (pipe bypass detection)
+    if (!currentValveState && flowRate > 0.3) {
+      flowTamper = true;
+      Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
+    }
+
+    // 2. Motion / Shaking detection
     if (mpuInitialized) {
       sensors_event_t a, g, temp;
       mpu.getEvent(&a, &g, &temp);
@@ -259,45 +284,95 @@ void loop() {
       if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
         motionTamper = true;
         lastTamperTime = millis();
+        Serial.println("🚨 TAMPER ALERT: Motion/Shaking detected!");
       }
-      if (millis() - lastTamperTime < 30000) motionTamper = true;
+      // Keep alert active for 30 seconds after motion
+      if (millis() - lastTamperTime < 30000) {
+        motionTamper = true;
+      }
+      // Update baseline slowly to account for slow tilts (drift)
       baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
       baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
       baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
     }
-    tamperDetected = motionTamper;
+    tamperDetected = flowTamper || motionTamper;
     lastFlowCalc = millis();
   }
 
+  // =========================
+  // SETTINGS SYNC (every 10 seconds)
+  // =========================
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() &&
+      (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo1, "settings/consumerCalibration")) {
+      float newVal = fbdo1.floatData();
+      if (newVal > 10.0 && newVal < 1000.0) {
+        flowCalibration = newVal;
+      }
+    }
+  }
+
   // 3. Valve Control (Every 1 second)
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000)) {
+  if (Firebase.ready() &&
+      (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
     bool govState = true;
     bool userState = true;
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/gov")) govState = fbdo1.boolData();
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/user")) userState = fbdo1.boolData();
+
+    // Read Gov Master Switch
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/gov")) {
+      govState = fbdo1.boolData();
+    }
+    // Read User Switch
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/user")) {
+      userState = fbdo1.boolData();
+    }
 
     // Valve logic: Normal status OR Emergency Override
     currentValveState = (govState && userState) || emergencyActive;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+
+    Serial.printf("Valve: [Gov: %s | User: %s] -> Final: %s\n",
+                  govState ? "ON" : "OFF", userState ? "ON" : "OFF",
+                  currentValveState ? "OPEN" : "CLOSED");
   }
 
   // 4. Send Real-time Data
   if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000)) {
     sendFlowPrevMillis = millis();
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres", totalLitres);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate",
+                           flowRate);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres",
+                           totalLitres);
     Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
-    
+
     // Emergency Sync
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/emergencyActive", emergencyActive);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/emergencyValue", emergencyValueRemaining);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/emergencyActive",
+                          emergencyActive);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/emergencyValue",
+                           emergencyValueRemaining);
   }
 
-  // 5. Heartbeat & Metadata
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
+  // 5. Heartbeat & Metadata (every 5 seconds)
+  if (Firebase.ready() &&
+      (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected", tamperDetected);
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState", currentValveState);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected",
+                          tamperDetected);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState",
+                          currentValveState);
+
+    Serial.print("Flow Rate: ");
+    Serial.print(flowRate);
+    Serial.print(" L/min | Total: ");
+    Serial.print(totalLitres);
+    Serial.print(" L | Tamper: ");
+    Serial.print(tamperDetected ? "YES" : "No");
+    Serial.print(" | Emergency: ");
+    Serial.println(emergencyActive ? "ACTIVE" : "Off");
+    Serial.println("Heartbeat sent to Firebase.");
+    Serial.println("------------------------");
   }
 }

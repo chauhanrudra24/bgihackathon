@@ -192,7 +192,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
   const balance = account?.balance ?? 500;
   const blocked = account?.blocked || false;
   const emergencyActive = nodeData?.emergencyActive || false;
-  const emergencyValue = nodeData?.emergencyValue || 0;
+  const emergencyValue = Number(nodeData?.emergencyValue) || 0;
   const hasSensor = nodeId === 'consumer_node'; // Logic to distinguish Ramesh vs Priya
 
   const handleEmergencyTrigger = () => {
@@ -252,28 +252,26 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
         </div>
       </div>
 
-      {/* Flow Data / Emergency Data */}
+      {/* Flow Data — ALWAYS visible regardless of theft/emergency */}
       <div className="consumer-flow-row">
-        {emergencyActive ? (
-          <div className="emergency-display-box" style={{ width: '100%', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 700 }}>FREE EMERGENCY WATER</p>
-            <h2 style={{ margin: '0.25rem 0', color: 'var(--danger)', fontSize: '1.8rem' }}>
+        {/* Emergency info shown as additional item, not replacement */}
+        {emergencyActive && (
+          <div className="consumer-flow-item" style={{ background: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius-md)', padding: '0.5rem' }}>
+            <span className="consumer-flow-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>🆘 SOS Remaining</span>
+            <span className="consumer-flow-value" style={{ color: 'var(--danger)' }}>
               {hasSensor ? `${emergencyValue.toFixed(2)}` : `${Math.floor(emergencyValue)}`}
-              <small style={{ fontSize: '0.8rem', marginLeft: '4px' }}>{hasSensor ? 'L' : 'sec'}</small>
-            </h2>
+              <small>{hasSensor ? 'L' : 'sec'}</small>
+            </span>
           </div>
-        ) : (
-          <>
-            <div className="consumer-flow-item">
-              <span className="consumer-flow-label">Flow Rate</span>
-              <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
-            </div>
-            <div className="consumer-flow-item">
-              <span className="consumer-flow-label">Total Usage</span>
-              <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
-            </div>
-          </>
         )}
+        <div className="consumer-flow-item">
+          <span className="consumer-flow-label">Flow Rate</span>
+          <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
+        </div>
+        <div className="consumer-flow-item">
+          <span className="consumer-flow-label">Total Usage</span>
+          <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
+        </div>
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Valve</span>
           <span className={`consumer-flow-value ${valveState ? 'valve-open' : 'valve-closed'}`}>
