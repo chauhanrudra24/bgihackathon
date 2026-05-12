@@ -9,11 +9,11 @@
 // Provide the RTDB payload printing info and other helper functions.
 #include "addons/RTDBHelper.h"
 
-#include <WiFiManager.h>
-#include <Ticker.h>
-#include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <Ticker.h>
+#include <WiFiManager.h>
+#include <Wire.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
 // =========================
@@ -29,9 +29,7 @@ unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
 Ticker blinker;
 
-void blink() {
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-}
+void blink() { digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); }
 
 Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
@@ -39,7 +37,7 @@ unsigned long lastTamperTime = 0;
 float baseAccelX, baseAccelY, baseAccelZ;
 
 // Callback when entering config mode
-void configModeCallback (WiFiManager *myWiFiManager) {
+void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println("Entered config mode");
   Serial.println(WiFi.softAPIP());
   Serial.println(myWiFiManager->getConfigPortalSSID());
@@ -49,14 +47,16 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 // =========================
 // VALVE PIN
 // =========================
-#define RELAY_PIN D3   // Relay moved to D3 (GPIO0) to free D1/D2 for I2C
-#define RELAY_ON LOW   
-#define RELAY_OFF HIGH 
+#define RELAY_PIN D3 // Relay moved to D3 (GPIO0) to free D1/D2 for I2C
+#define RELAY_ON LOW
+#define RELAY_OFF HIGH
 
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D5 // 1/8" Flow Sensor Signal Pin (Moved to D5 for better interrupt reliability)
+#define FLOW_SENSOR_PIN                                                        \
+  D6 // 1/8" Flow Sensor Signal Pin (Moved to D5 for better interrupt
+     // reliability)
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
@@ -95,7 +95,7 @@ void setup() {
   WiFiManager wifiManager;
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH); 
+  digitalWrite(LED_BUILTIN, HIGH);
   wifiManager.setAPCallback(configModeCallback);
 
   Serial.println("Connecting to Wi-Fi...");
@@ -143,7 +143,8 @@ void setup() {
 
   // 4. Setup Flow Sensor
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR,
+                  FALLING);
   lastFlowCalc = millis();
 
   Serial.println("Flow Sensor (1/8 inch) initialized on D5");
@@ -159,7 +160,7 @@ void setup() {
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
     mpuInitialized = true;
-    
+
     // Get initial readings
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
@@ -262,7 +263,7 @@ void loop() {
       float diffX = abs(a.acceleration.x - baseAccelX);
       float diffY = abs(a.acceleration.y - baseAccelY);
       float diffZ = abs(a.acceleration.z - baseAccelZ);
-      
+
       // If deviation is more than 3.5 m/s^2, consider it a shake
       if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
         motionTamper = true;
@@ -274,7 +275,7 @@ void loop() {
       if (millis() - lastTamperTime < 30000) {
         motionTamper = true;
       }
-      
+
       // Update baseline slowly to account for slow tilts (drift)
       baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
       baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;

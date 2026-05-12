@@ -164,6 +164,7 @@ const ConsumerDashboard = () => {
 
   // Water quality from gov node
   const renderQualityCard = (sensorData, title) => {
+    if (!sensorData) return null;
     const online = isNodeOnline(sensorData?.lastSeen);
 
     const tdsConnected = sensorData.tdsConnected === true;
@@ -411,7 +412,11 @@ const ConsumerDashboard = () => {
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>🏛️ City Supply</h2>
             <span className="status" style={{ fontSize: '0.6rem' }}>LIVE QUALITY</span>
           </div>
-          {renderQualityCard(govData, "Rau Pumping Station (BGI Indore Area)")}
+          {govData ? renderQualityCard(govData, "Rau Pumping Station (BGI Indore Area)") : (
+            <div className="card" style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-color)' }}>
+              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Connecting to city supply data...</p>
+            </div>
+          )}
         </section>
 
 

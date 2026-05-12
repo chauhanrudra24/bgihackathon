@@ -453,27 +453,25 @@ const Dashboard = () => {
     if (!data) return;
     const govNode = data.gov_node;
     const govOnline = isNodeOnline(govNode);
-    const govFlowing = govOnline && (govNode?.flowRate || 0) > 0;
+    // If gov supply is active (>2L/min), consumer is online, valve is open, but consumer flow is zero → flag
+    if (govOnline && govNode.flowRate > 2.0) {
+      CONSUMER_NODES.forEach(({ nodeId }) => {
+        const consumerData = data[nodeId];
+        const consumerOnline = isNodeOnline(consumerData);
+        const valve = valves[nodeId];
+        const valveOpen = valve?.gov !== false && valve?.user !== false;
+        const consumerFlow = consumerData?.flowRate ?? 0;
+        const account = accounts[nodeId] || {};
 
-    if (!govFlowing) return;
-
-    CONSUMER_NODES.forEach(({ nodeId }) => {
-      const consumerData = data[nodeId];
-      const consumerOnline = isNodeOnline(consumerData);
-      const valve = valves[nodeId];
-      const valveOpen = valve?.gov !== false && valve?.user !== false;
-      const consumerFlow = consumerData?.flowRate || 0;
-      const account = accounts[nodeId] || {};
-
-      // If gov supply is active, consumer is online, valve is open, but consumer flow is zero → flag
-      if (consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged) {
-        set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
-        set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active but no consumer flow detected');
-        set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
-        // Auto-block the consumer valve
-        set(ref(db, `valves/${nodeId}/gov`), false);
-      }
-    });
+        if (consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged) {
+          set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
+          set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>2L/min) but no consumer flow detected');
+          set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
+          // Auto-block the consumer valve
+          set(ref(db, `valves/${nodeId}/gov`), false);
+        }
+      });
+    }
   }, [data, valves, accounts]);
 
   // ===== AUTO BALANCE CHECK =====
