@@ -191,9 +191,24 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
   const theftFlagged = account?.theftFlagged || false;
   const balance = account?.balance ?? 500;
   const blocked = account?.blocked || false;
+  const emergencyActive = nodeData?.emergencyActive || false;
+  const emergencyValue = nodeData?.emergencyValue || 0;
+  const hasSensor = nodeId === 'consumer_node'; // Logic to distinguish Ramesh vs Priya
+
+  const handleEmergencyTrigger = () => {
+    if (window.confirm(`🆘 Grant emergency water access to ${title}?`)) {
+      set(ref(db, `commands/${nodeId}/triggerEmergency`), true);
+    }
+  };
 
   return (
-    <div className={`consumer-full-card ${tamper || theftFlagged ? 'tamper-active' : ''}`} id={`consumer-card-${nodeId}`}>
+    <div className={`consumer-full-card ${tamper || theftFlagged ? 'tamper-active' : ''} ${emergencyActive ? 'emergency-mode' : ''}`} id={`consumer-card-${nodeId}`}>
+      {/* Emergency Active Alert */}
+      {emergencyActive && online && (
+        <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
+          <span>🆘 EMERGENCY OVERRIDE ACTIVE</span> — Granting free water access ({hasSensor ? `${emergencyValue.toFixed(2)} L remaining` : `${Math.floor(emergencyValue)}s remaining`}).
+        </div>
+      )}
       {/* Tamper Alert */}
       {tamper && online && (
         <div className="tamper-alert">
@@ -237,16 +252,28 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
         </div>
       </div>
 
-      {/* Flow Data */}
+      {/* Flow Data / Emergency Data */}
       <div className="consumer-flow-row">
-        <div className="consumer-flow-item">
-          <span className="consumer-flow-label">Flow Rate</span>
-          <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
-        </div>
-        <div className="consumer-flow-item">
-          <span className="consumer-flow-label">Total Usage</span>
-          <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
-        </div>
+        {emergencyActive ? (
+          <div className="emergency-display-box" style={{ width: '100%', padding: '1rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 700 }}>FREE EMERGENCY WATER</p>
+            <h2 style={{ margin: '0.25rem 0', color: 'var(--danger)', fontSize: '1.8rem' }}>
+              {hasSensor ? `${emergencyValue.toFixed(2)}` : `${Math.floor(emergencyValue)}`}
+              <small style={{ fontSize: '0.8rem', marginLeft: '4px' }}>{hasSensor ? 'L' : 'sec'}</small>
+            </h2>
+          </div>
+        ) : (
+          <>
+            <div className="consumer-flow-item">
+              <span className="consumer-flow-label">Flow Rate</span>
+              <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
+            </div>
+            <div className="consumer-flow-item">
+              <span className="consumer-flow-label">Total Usage</span>
+              <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
+            </div>
+          </>
+        )}
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Valve</span>
           <span className={`consumer-flow-value ${valveState ? 'valve-open' : 'valve-closed'}`}>
@@ -275,7 +302,14 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
           </button>
         )}
         <button 
-          disabled={!online || theftFlagged || blocked}
+          onClick={handleEmergencyTrigger}
+          disabled={!online || emergencyActive}
+          style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}
+        >
+          🆘 SOS
+        </button>
+        <button 
+          disabled={!online || (theftFlagged || blocked) && !emergencyActive}
           onClick={onToggleValve} 
           className={`valve-btn ${valveState ? 'open' : 'closed'}`}
         >

@@ -110,6 +110,12 @@ const ConsumerDashboard = () => {
   }, [myNodeData?.totalLitres]);
 
 
+  const triggerEmergency = () => {
+    if (window.confirm("🆘 Confirm Emergency Water? This will grant a temporary free supply for 1 litre or 1 minute.")) {
+      set(ref(db, `commands/${nodeId}/triggerEmergency`), true);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -160,7 +166,9 @@ const ConsumerDashboard = () => {
   const myNodeOnline = isNodeOnline(myNodeData?.lastSeen);
   const tamperDetected = myNodeData?.tamperDetected || false;
   const balance = account?.balance ?? 500;
-  const isBlocked = account?.blocked || account?.theftFlagged || balance <= 0;
+  const emergencyActive = myNodeData?.emergencyActive || false;
+  const emergencyValue = myNodeData?.emergencyValue || 0;
+  const isBlocked = (account?.blocked || account?.theftFlagged || balance <= 0) && !emergencyActive;
 
   // Water quality from gov node
   const renderQualityCard = (sensorData, title) => {
@@ -306,13 +314,13 @@ const ConsumerDashboard = () => {
           </div>
         )}
 
-        {/* Zero Balance Alert */}
-        {balance <= 0 && !account.theftFlagged && (
-          <div className="theft-banner suspicious" style={{ marginBottom: '2rem' }}>
-            <div className="theft-banner-icon">💳</div>
+        {/* Emergency Supply Alert */}
+        {emergencyActive && (
+          <div className="theft-banner alert" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
+            <div className="theft-banner-icon">🆘</div>
             <div className="theft-banner-content">
-              <h3>ZERO BALANCE — SUPPLY SUSPENDED</h3>
-              <p>Your prepaid balance is ₹0. Please recharge your account to restore water supply. Click the "Recharge" button above.</p>
+              <h3>EMERGENCY SUPPLY ACTIVE</h3>
+              <p>You have been granted temporary water access. Remaining: <strong>{user.hasSensor !== false ? `${emergencyValue.toFixed(2)}L` : `${Math.floor(emergencyValue)}s`}</strong></p>
             </div>
           </div>
         )}
@@ -364,47 +372,76 @@ const ConsumerDashboard = () => {
               </div>
           </div>
 
-          {/* Flow Data Cards */}
+          {/* Flow Data Cards / Emergency Display */}
           {myNodeOnline ? (
             <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-              {user.hasSensor !== false && (
-                <>
-                  <div className="card">
-                    <h3>Current Flow</h3>
-                    <div className="value" style={{ fontSize: '1.8rem' }}>
-                      {(myNodeData?.flowRate || 0).toFixed(1)}
-                      <span className="unit">L/min</span>
-                    </div>
-                    {myNodeData?.flowRate > 0 && (
-                      <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
-                        <span className="flow-dot"></span> Flowing
+              {emergencyActive ? (
+                <div className="card" style={{ gridColumn: '1 / -1', background: 'rgba(239, 68, 68, 0.05)', border: '2px dashed #ef4444' }}>
+                   <div style={{ textAlign: 'center', padding: '1rem' }}>
+                      <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER REMAINING</h3>
+                      <div className="value" style={{ fontSize: '2.5rem', color: '#ef4444' }}>
+                        {user.hasSensor !== false ? emergencyValue.toFixed(2) : Math.floor(emergencyValue)}
+                        <span className="unit" style={{ fontSize: '1rem' }}>{user.hasSensor !== false ? 'L' : 'sec'}</span>
                       </div>
-                    )}
-                  </div>
+                   </div>
+                </div>
+              ) : (
+                <>
+                  {user.hasSensor !== false && (
+                    <>
+                      <div className="card">
+                        <h3>Current Flow</h3>
+                        <div className="value" style={{ fontSize: '1.8rem' }}>
+                          {(myNodeData?.flowRate || 0).toFixed(1)}
+                          <span className="unit">L/min</span>
+                        </div>
+                        {myNodeData?.flowRate > 0 && (
+                          <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
+                            <span className="flow-dot"></span> Flowing
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="card">
+                        <h3>Total Usage</h3>
+                        <div className="value" style={{ fontSize: '1.8rem' }}>
+                          {(myNodeData?.totalLitres || 0).toFixed(1)}
+                          <span className="unit">L</span>
+                        </div>
+                        <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
+                      </div>
+                    </>
+                  )}
 
                   <div className="card">
-                    <h3>Total Usage</h3>
+                    <h3>Est. Cost</h3>
                     <div className="value" style={{ fontSize: '1.8rem' }}>
-                      {(myNodeData?.totalLitres || 0).toFixed(1)}
-                      <span className="unit">L</span>
+                      ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
                     </div>
-                    <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
+                    <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
                   </div>
                 </>
               )}
-
-              <div className="card">
-                <h3>Est. Cost</h3>
-                <div className="value" style={{ fontSize: '1.8rem' }}>
-                  ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
-                </div>
-                <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
-              </div>
             </div>
           ) : (
             <div className="card" style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-color)' }}>
               <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Waiting for hardware connection...</p>
             </div>
+          )}
+
+          {/* Emergency Trigger Button */}
+          {!emergencyActive && myNodeOnline && (
+            <button 
+              onClick={triggerEmergency}
+              style={{ 
+                width: '100%', marginTop: '1.5rem', padding: '1rem', 
+                background: 'linear-gradient(135deg, #ef4444, #b91c1c)', 
+                color: 'white', border: 'none', borderRadius: 'var(--radius-md)', 
+                fontWeight: 800, cursor: 'pointer', fontSize: '1rem', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+              }}
+            >
+              🆘 REQUEST EMERGENCY WATER
+            </button>
           )}
         </section>
 

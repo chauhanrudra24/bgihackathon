@@ -21,6 +21,7 @@
 
 FirebaseData fbdo1;
 FirebaseData fbdo2;
+FirebaseData fbdo_cmd;
 FirebaseAuth auth;
 FirebaseConfig config;
 
@@ -52,9 +53,26 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 #define RELAY_ON LOW   
 #define RELAY_OFF HIGH 
 
+// =========================
+// EMERGENCY BUTTON
+// =========================
+#define EMERGENCY_BUTTON_PIN D7
+bool emergencyActive = false;
+int emergencySecondsRemaining = 0;
+unsigned long lastEmergencyDec = 0;
+
 // Tamper detection
 bool tamperDetected = false;
 bool currentValveState = false;
+
+void triggerEmergency() {
+  if (!emergencyActive) {
+    Serial.println("🆘 EMERGENCY MODE ACTIVATED: Granting 60 Seconds...");
+    emergencyActive = true;
+    emergencySecondsRemaining = 60; // 1 Minute for Priya
+    lastEmergencyDec = millis();
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -68,9 +86,9 @@ void setup() {
   WiFiManager wifiManager;
   
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
+  pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(LED_BUILTIN, HIGH);
 
-  // Set callback for when AP mode starts
   wifiManager.setAPCallback(configModeCallback);
 
   Serial.println("Connecting to Wi-Fi...");
@@ -95,8 +113,7 @@ void setup() {
 
   if (Firebase.signUp(&config, &auth, "", "")) {
     Serial.println("Firebase sign up OK");
-  }
-  else {
+  } else {
     Serial.printf("Firebase sign up failed: %s\n", config.signer.signupError.message.c_str());
   }
 
@@ -133,26 +150,50 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  // 1. Check for Reset Command (Only for tamper alert clearing in this node)
-  static unsigned long lastResetCheck = 0;
-  if (Firebase.ready() && (millis() - lastResetCheck > 2000)) {
-    lastResetCheck = millis();
-    if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
-      if (fbdo1.boolData()) {
-        Serial.println("🔄 RESET REQUESTED...");
-        lastTamperTime = 0;
-        tamperDetected = false;
+  // 0. Check Physical Emergency Button
+  if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
+    triggerEmergency();
+  }
+
+  // 1. Check for Commands
+  static unsigned long lastCmdCheck = 0;
+  if (Firebase.ready() && (millis() - lastCmdCheck > 1000)) {
+    lastCmdCheck = millis();
+    
+    // Reset All
+    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/resetAll")) {
+      if (fbdo_cmd.boolData()) {
+        emergencyActive = false; emergencySecondsRemaining = 0;
+        tamperDetected = false; lastTamperTime = 0;
+      }
+    }
+
+    // Individual Emergency Trigger
+    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/consumer_node_8266/triggerEmergency")) {
+      if (fbdo_cmd.boolData()) {
+        triggerEmergency();
+        Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node_8266/triggerEmergency", false);
       }
     }
   }
 
-  // 2. Tamper (Motion) detection
+  // 2. Emergency Timer Management
+  if (emergencyActive && (millis() - lastEmergencyDec >= 1000)) {
+    lastEmergencyDec = millis();
+    emergencySecondsRemaining--;
+    if (emergencySecondsRemaining <= 0) {
+      emergencySecondsRemaining = 0;
+      emergencyActive = false;
+      Serial.println("🆘 EMERGENCY TIMER FINISHED.");
+    }
+  }
+
+  // 3. Tamper detection
   static unsigned long lastMPUCheck = 0;
   if (mpuInitialized && (millis() - lastMPUCheck > 500)) {
     lastMPUCheck = millis();
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
-
     float diffX = abs(a.acceleration.x - baseAccelX);
     float diffY = abs(a.acceleration.y - baseAccelY);
     float diffZ = abs(a.acceleration.z - baseAccelZ);
@@ -160,50 +201,38 @@ void loop() {
     if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
       tamperDetected = true;
       lastTamperTime = millis();
-      Serial.println("🚨 TAMPER ALERT: Motion detected!");
     }
-
     if (lastTamperTime > 0 && millis() - lastTamperTime > 30000) {
       tamperDetected = false;
       lastTamperTime = 0;
     }
-    
     baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
     baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
     baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
   }
 
-  // 3. Check Valve Status every 1 second
+  // 4. Valve Status Logic
   if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000)) {
     lastValveCheckMillis = millis();
-    
     bool govState = true;
     bool userState = true;
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/gov")) govState = fbdo1.boolData();
+    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/user")) userState = fbdo1.boolData();
     
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/gov")) {
-      govState = fbdo1.boolData();
-    }
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/user")) {
-      userState = fbdo1.boolData();
-    }
-    
-    currentValveState = govState && userState;
+    // Logic: (Gov & User) OR Emergency Override
+    currentValveState = (govState && userState) || emergencyActive;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
   }
 
-  // 4. Send Heartbeat & Status every 5 seconds
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
+  // 5. Sync Data
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 1000)) {
     sendDataPrevMillis = millis();
-    
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/tamperDetected", tamperDetected);
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/valveState", currentValveState);
     Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen");
     
-    // Explicitly set flowRate to 0 since sensor is removed
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", 0);
-    
-    Serial.printf("Status Sent | Valve: %s | Tamper: %s\n", 
-                  currentValveState ? "OPEN" : "CLOSED", 
-                  tamperDetected ? "YES" : "No");
+    // Emergency Status
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/emergencyActive", emergencyActive);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/emergencyValue", emergencySecondsRemaining);
   }
 }
