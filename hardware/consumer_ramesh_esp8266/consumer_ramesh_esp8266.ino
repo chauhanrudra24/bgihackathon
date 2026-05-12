@@ -91,8 +91,7 @@ void setup() {
   // 1. Connect to WiFi using WiFiManager
   WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  WiFiManager wifiManager;
-
+  
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, HIGH);
@@ -204,6 +203,10 @@ void loop() {
         Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/flowRate"), 0);
         Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/triggerEmergency"), false);
+        
+        // Immediate Status Sync to clear red alerts
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), false);
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/tamperDetected"), false);
       }
 
       // Check Individual Emergency Trigger
@@ -342,7 +345,11 @@ void loop() {
   if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000)) {
     sendFlowPrevMillis = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/flowRate"), flowRate);
+    #ifdef ESP8266
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/totalLitres"), totalLitres);
+    #else
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", totalLitres);
+    #endif
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node/lastSeen"));
 
     // Emergency Status

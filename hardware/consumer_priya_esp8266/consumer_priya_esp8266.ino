@@ -243,9 +243,20 @@ void loop() {
          lastTamperTime = 0;
          // Force update
          Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
+         Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
+         Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
+         
+         // Immediate status sync to clear red alerts
+         Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
+         Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/tamperDetected", false);
        }
 
-       // (Individual Emergency Removed - Use Physical Button)
+       // Check Individual Emergency Trigger (RESTORED)
+       json.get(jsonData, "consumer_node_8266/triggerEmergency");
+       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+          triggerEmergency();
+          Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
+       }
     }
 
     // Check Valves
