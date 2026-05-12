@@ -48,17 +48,17 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D5 // 1/8" Flow Sensor Signal Pin (Fixed D2->D5)
+#define FLOW_SENSOR_PIN D6 // Matches your working test script (Pin D6 / GPIO 12)
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 96.0 // F = 96 * Q (L/min)
+#define FLOW_CALIBRATION 98.0 // F = 98 * Q (L/min) -> 5880 pulses/L
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;    // L/min (Smoothed)
 float totalLitres = 0.0; // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 96.0; // Default for small G1/8
+float flowCalibration = 98.0; // Default for small G1/8
 
 // Tamper detection - if valve is CLOSED but flow is detected
 bool tamperDetected = false;

@@ -6,7 +6,9 @@ import { db, firestore } from '../firebase';
 
 const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
-  return (Date.now() - nodeData.lastSeen) < 20000;
+  // 60s threshold + drift tolerance
+  const diff = Math.abs(Date.now() - nodeData.lastSeen);
+  return diff < 60000;
 };
 
 // =========================
@@ -137,7 +139,9 @@ const NodeCard = ({ title, nodeData }) => {
     <div className="node-container">
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
         <h2>{title}</h2>
-        <span className="status">● ONLINE</span>
+        <span className={`status ${online ? '' : 'offline'}`}>
+          {online ? '● ONLINE' : `🔌 OFFLINE (Seen ${nodeData.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'})`}
+        </span>
       </div>
       
       <div className="nodes-grid">
@@ -228,30 +232,28 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
             ₹{balance.toFixed(0)}
           </span>
           <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`}>
-            {online ? (tamper || theftFlagged ? '⚠ ALERT' : '● ONLINE') : 'OFFLINE'}
+            {online ? (tamper || theftFlagged ? '⚠ ALERT' : '● ONLINE') : `OFFLINE (${nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'})`}
           </span>
         </div>
       </div>
 
       {/* Flow Data */}
-      {online && (
-        <div className="consumer-flow-row">
-          <div className="consumer-flow-item">
-            <span className="consumer-flow-label">Flow Rate</span>
-            <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(1)} <small>L/min</small></span>
-          </div>
-          <div className="consumer-flow-item">
-            <span className="consumer-flow-label">Total Usage</span>
-            <span className="consumer-flow-value">{(nodeData?.totalLitres || 0).toFixed(2)} <small>L</small></span>
-          </div>
-          <div className="consumer-flow-item">
-            <span className="consumer-flow-label">Valve</span>
-            <span className={`consumer-flow-value ${valveState ? 'valve-open' : 'valve-closed'}`}>
-              {valveState ? '🟢 OPEN' : '🔴 CLOSED'}
-            </span>
-          </div>
+      <div className="consumer-flow-row">
+        <div className="consumer-flow-item">
+          <span className="consumer-flow-label">Flow Rate</span>
+          <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
         </div>
-      )}
+        <div className="consumer-flow-item">
+          <span className="consumer-flow-label">Total Usage</span>
+          <span className="consumer-flow-value">{(nodeData?.totalLitres || 0).toFixed(3)} <small>L</small></span>
+        </div>
+        <div className="consumer-flow-item">
+          <span className="consumer-flow-label">Valve</span>
+          <span className={`consumer-flow-value ${valveState ? 'valve-open' : 'valve-closed'}`}>
+            {valveState ? '🟢 OPEN' : '🔴 CLOSED'}
+          </span>
+        </div>
+      </div>
 
       {/* Valve Control + Block Toggle */}
       <div className="consumer-card-footer" style={{ gap: '0.5rem' }}>
