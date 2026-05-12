@@ -290,7 +290,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 const SettingsView = () => {
   const [settings, setSettings] = useState(null);
   const [localPrice, setLocalPrice] = useState(0.5);
-  const [localGovCal, setLocalGovCal] = useState(7.5);
+  const [localGovCal, setLocalGovCal] = useState(98.0);
   const [localConsCal, setLocalConsCal] = useState(98.0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

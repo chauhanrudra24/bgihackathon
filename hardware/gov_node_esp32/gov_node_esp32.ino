@@ -47,7 +47,7 @@ volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 7.5; // Default for YF-S201
+float flowCalibration = 98.0; // Calibrated for YF-S401 (6mm ID)
 
 // Theft Detection
 float govSupplyLitres = 0.0;     // Total litres from gov supply
