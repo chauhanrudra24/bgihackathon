@@ -174,7 +174,6 @@ void loop() {
         Serial.println("🔄 SYSTEM RESET REQUESTED...");
         totalLitres = 0;
         flowRate = 0;
-        pulseCount = 0;
         tamperDetected = false;
         lastTamperTime = 0;
         emergencyActive = false;
