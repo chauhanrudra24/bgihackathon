@@ -1,7 +1,4 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
 
 // Provide the token generation process info.
@@ -112,12 +109,6 @@ void setup() {
   blinker.detach();
   digitalWrite(LED_BUILTIN, LOW); 
 
-  // 1.5 Setup OTA
-  ArduinoOTA.setHostname("Consumer_Priya");
-  ArduinoOTA.setPassword("prince");
-  ArduinoOTA.begin();
-  Serial.println("OTA Ready");
-
   // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -173,33 +164,45 @@ void ICACHE_RAM_ATTR flowPulseISR() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
 
   // 0. Check Physical Emergency Button
   if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
     triggerEmergency();
   }
 
-  // 1. Check for Commands
+  // 1. Check for Reset/Emergency Command (Batch Fetch to reduce blocking)
   static unsigned long lastCmdCheck = 0;
-  if (Firebase.ready() && (millis() - lastCmdCheck > 1000)) {
+  if (Firebase.ready() && (millis() - lastCmdCheck > 2000)) { 
     lastCmdCheck = millis();
-    
-    // Reset All
-    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/resetAll")) {
-      if (fbdo_cmd.boolData()) {
-        emergencyActive = false; emergencySecondsRemaining = 0;
-        tamperDetected = false; lastTamperTime = 0;
-      }
-    }
+    yield(); 
 
-    // Individual Emergency Trigger
-    if (Firebase.RTDB.getBool(&fbdo_cmd, "commands/consumer_node_8266/triggerEmergency")) {
-      if (fbdo_cmd.boolData()) {
+    if (Firebase.RTDB.getJSON(&fbdo_cmd, "commands")) {
+      FirebaseJson &json = fbdo_cmd.jsonObject();
+      FirebaseJsonData jsonData;
+      
+      // Check System-wide Reset 
+      json.get(jsonData, "resetAll");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+        Serial.println("🔄 SYSTEM RESET REQUESTED...");
+        totalLitres = 0;
+        flowRate = 0;
+        pulseCount = 0;
+        tamperDetected = false;
+        lastTamperTime = 0;
+        emergencyActive = false;
+        emergencySecondsRemaining = 0;
+        // Force update
+        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node_8266/totalLitres", 0);
+      }
+
+      // Check Individual Emergency Trigger
+      json.get(jsonData, "consumer_node_8266/triggerEmergency");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         triggerEmergency();
         Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node_8266/triggerEmergency", false);
       }
     }
+    yield();
   }
 
   // 2. Emergency Timer Management

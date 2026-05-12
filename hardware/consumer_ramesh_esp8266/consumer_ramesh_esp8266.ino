@@ -1,4 +1,3 @@
-#include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <Firebase_ESP_Client.h>
@@ -123,12 +122,6 @@ void setup() {
   blinker.detach();
   digitalWrite(LED_BUILTIN, LOW);
 
-  // 1.5 Setup OTA
-  ArduinoOTA.setHostname("Consumer_Ramesh");
-  ArduinoOTA.setPassword("prince");
-  ArduinoOTA.begin();
-  Serial.println("OTA Ready");
-
   // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -177,7 +170,6 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
 
   // 0. Check Physical Emergency Button
   if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
@@ -194,7 +186,7 @@ void loop() {
       FirebaseJson &json = fbdo_cmd.jsonObject();
       FirebaseJsonData jsonData;
       
-      // Check System-wide Reset
+      // Check System-wide Reset 
       json.get(jsonData, "resetAll");
       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         Serial.println("🔄 SYSTEM RESET REQUESTED...");
