@@ -151,8 +151,8 @@ void setup() {
 
 void loop() {
 
-  // 0. Check Physical Emergency Button
-  if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
+  // 0. Check Physical Emergency Button (Ignore first 5s to prevent boot triggers)
+  if (millis() > 5000 && digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
     triggerEmergency();
   }
 
