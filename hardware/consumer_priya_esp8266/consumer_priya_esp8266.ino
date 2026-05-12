@@ -178,6 +178,8 @@ void loop() {
         emergencySecondsRemaining = 0;
         // Force update
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
+        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/emergencyValue", 0);
         Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
       }
 

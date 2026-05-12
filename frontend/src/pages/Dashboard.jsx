@@ -185,13 +185,16 @@ const NodeCard = ({ title, nodeData }) => {
 // =========================
 // CONSUMER VALVE + FLOW CARD
 // =========================
-const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle }) => {
+const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, lastResetTime }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
   const balance = account?.balance ?? 500;
   const blocked = account?.blocked || false;
-  const emergencyActive = nodeData?.emergencyActive || false;
+  
+  // Suppress emergency alert if we just performed a reset (within 3 seconds)
+  const isResetting = Date.now() - lastResetTime < 3000;
+  const emergencyActive = !isResetting && (nodeData?.emergencyActive || false);
   const emergencyValue = Number(nodeData?.emergencyValue) || 0;
   const hasSensor = nodeId === 'consumer_node'; // Logic to distinguish Ramesh vs Priya
 
@@ -430,6 +433,7 @@ const Dashboard = () => {
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
   const [commands, setCommands] = useState({});
+  const [lastResetTime, setLastResetTime] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
@@ -600,6 +604,8 @@ const Dashboard = () => {
         updates[`commands/${nodeId}/triggerEmergency`] = false;
       }
 
+      setLastResetTime(Date.now());
+
       // Perform all updates in one go (more efficient)
       // Note: In Firebase modular SDK, you'd use 'update' but here we can just set them
       // To keep it simple and consistent with your style, I'll keep individual sets but as a promise array
@@ -719,6 +725,7 @@ const Dashboard = () => {
               account={accounts[nodeId] || { balance: 500 }}
               onToggleValve={() => set(ref(db, `valves/${nodeId}/gov`), !(valves[nodeId]?.gov ?? true))}
               onBlockToggle={() => handleBlockToggle(nodeId)}
+              lastResetTime={lastResetTime}
             />
           ))}
         </div>

@@ -194,9 +194,11 @@ void loop() {
         lastTamperTime = 0;
         emergencyActive = false;
         emergencyValueRemaining = 0;
-        // Force update RTDB immediately
+        // Force update RTDB immediately (Prevent Ghost SOS)
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", 0);
+        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/emergencyActive", false);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/emergencyValue", 0);
         Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
         Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
       }
