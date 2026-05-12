@@ -15,20 +15,100 @@ const isNodeOnline = (nodeData) => {
 // THEFT ALERT BANNER
 // =========================
 const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference }) => {
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    let timer;
+    if (theftStatus?.startsWith('PENDING_')) {
+      setCountdown(5);
+      timer = setInterval(() => {
+        setCountdown(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [theftStatus]);
+
   if (theftStatus === 'NORMAL' || !theftStatus) return null;
 
-  const isAlert = theftStatus === 'ALERT';
+  const isAlert = theftStatus === 'ALERT' || theftStatus === 'THEFT FLAGGED';
+  const isPending = theftStatus?.startsWith('PENDING_');
   
   return (
     <div className={`theft-banner ${isAlert ? 'alert' : 'suspicious'}`} id="theft-alert-banner">
-      <div className="theft-banner-icon">{isAlert ? '🚨' : '⚠️'}</div>
+      <div className="theft-banner-icon">{isAlert ? '🚨' : isPending ? '⏳' : '⚠️'}</div>
       <div className="theft-banner-content">
-        <h3>{isAlert ? 'THEFT ALERT: Major Water Loss Detected!' : 'SUSPICIOUS: Minor Flow Discrepancy'}</h3>
+        <h3>
+          {isAlert ? 'THEFT ALERT: Major Water Loss Detected!' : 
+           isPending ? `POTENTIAL THEFT DETECTED: Verifying in ${countdown}s...` :
+           'SUSPICIOUS: Minor Flow Discrepancy'}
+        </h3>
         <p>
           Gov Supply: <strong>{govSupply?.toFixed(2) || 0} L</strong> |
           Consumer Total: <strong>{consumerTotal?.toFixed(2) || 0} L</strong> |
           Unaccounted: <strong>{difference?.toFixed(2) || 0} L</strong>
         </p>
+        {isPending && (
+          <div className="theft-countdown-box">
+             <div className="countdown-timer">{countdown}</div>
+             <div className="countdown-label">Seconds remaining</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// =========================
+// CUSTOM POPUP COMPONENT
+// =========================
+const CustomPopup = ({ isOpen, title, message, icon, onConfirm, onCancel, confirmText, cancelText, type, details }) => {
+  if (!isOpen) return null;
+
+  if (type === 'EMERGENCY') {
+    return (
+      <div className="popup-overlay">
+        <div className="emergency-alert-modal">
+          <span className="popup-icon">🚨</span>
+          <h2>CRITICAL ALERT</h2>
+          <p style={{ fontSize: '1.2rem', fontWeight: 600 }}>{message}</p>
+          
+          <div className="emergency-details">
+            <div className="emergency-row">
+              <span className="emergency-label">Consumer:</span>
+              <span className="emergency-value">{details?.name}</span>
+            </div>
+            <div className="emergency-row">
+              <span className="emergency-label">House ID:</span>
+              <span className="emergency-value">{details?.houseId}</span>
+            </div>
+            <div className="emergency-row">
+              <span className="emergency-label">Reason:</span>
+              <span className="emergency-value">{details?.reason}</span>
+            </div>
+            <div className="emergency-row">
+              <span className="emergency-label">Status:</span>
+              <span className="emergency-value" style={{ color: '#fff', background: '#000', padding: '2px 8px', borderRadius: '4px' }}>LOCKED</span>
+            </div>
+          </div>
+
+          <button className="submit-btn" style={{ background: 'white', color: '#ef4444' }} onClick={onConfirm}>
+            ACKNOWLEDGE & INVESTIGATE
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="popup-overlay">
+      <div className="popup-card">
+        <span className="popup-icon">{icon}</span>
+        <h2>{title}</h2>
+        <p>{message}</p>
+        <div className="popup-actions">
+          {onCancel && <button className="popup-btn secondary" onClick={onCancel}>{cancelText || 'Cancel'}</button>}
+          <button className="popup-btn primary" onClick={onConfirm}>{confirmText || 'OK'}</button>
+        </div>
       </div>
     </div>
   );
@@ -185,20 +265,27 @@ const NodeCard = ({ title, nodeData }) => {
 // =========================
 // CONSUMER VALVE + FLOW CARD
 // =========================
-const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle }) => {
+const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
   const balance = account?.balance ?? 500;
   const blocked = account?.blocked || false;
+  const hasSensor = nodeId === 'consumer_node'; 
+  const emergencyLitres = nodeData?.emergencyLitres || 0;
   const emergencyActive = nodeData?.emergencyActive || false;
-  const emergencyValue = Number(nodeData?.emergencyValue) || 0;
-  const hasSensor = nodeId === 'consumer_node'; // Logic to distinguish Ramesh vs Priya
+  const valveOpen = nodeData?.valveState || false;
+  
+  // Premium Billing
+  const baseRate = 12;
+  const premiumRate = 45;
+  const normalCost = (nodeData?.totalLitres || 0) * baseRate;
+  const emergencyCost = emergencyLitres * premiumRate;
+  const totalBill = normalCost + emergencyCost;
 
   const handleEmergencyTrigger = () => {
-    if (window.confirm(`🆘 Grant emergency water access to ${title}?`)) {
-      set(ref(db, `commands/${nodeId}/triggerEmergency`), true);
-    }
+    // We'll handle this through the admin dashboard popup system instead
+    onToggleEmergency(nodeId, title);
   };
 
   return (
@@ -212,7 +299,10 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
       {/* Tamper Alert */}
       {tamper && online && (
         <div className="tamper-alert">
-          <span>🚨 TAMPER DETECTED</span> — Flow detected while valve is CLOSED or DEVICE SHAKING/REMOVAL detected. Possible bypass or theft attempt.
+          <span>🚨 TAMPER DETECTED</span> — Device moved/tilted. Valve auto-LOCKED. Admin must clear.
+          <button onClick={() => onClearTamper(nodeId)} style={{ marginLeft: '1rem', padding: '0.3rem 0.8rem', background: 'white', color: 'var(--danger)', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem' }}>
+            ✅ Clear Tamper
+          </button>
         </div>
       )}
 
@@ -279,8 +369,17 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
           <span className="consumer-flow-value">{(nodeData?.flowRate || 0).toFixed(2)} <small>L/min</small></span>
         </div>
         <div className="consumer-flow-item">
-          <span className="consumer-flow-label">Total Usage</span>
-          <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
+          <span className="consumer-flow-label">Billed Usage</span>
+          <span className="consumer-flow-value">
+            {valveOpen ? (nodeData?.totalLitres || 0).toFixed(3) : <span style={{color:'var(--text-muted)', fontSize:'0.8rem'}}>Valve OFF</span>}
+            {valveOpen && <small> L</small>}
+          </span>
+        </div>
+        <div className="consumer-flow-item" style={{ background: emergencyLitres > 0 ? 'rgba(239, 68, 68, 0.08)' : 'transparent' }}>
+          <span className="consumer-flow-label">🆘 Emergency</span>
+          <span className="consumer-flow-value" style={{ color: emergencyLitres > 0 ? 'var(--danger)' : 'inherit' }}>
+            {emergencyLitres.toFixed(3)} <small>L (₹{emergencyCost.toFixed(0)})</small>
+          </span>
         </div>
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Valve</span>
@@ -309,7 +408,18 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
             🚫 Block User
           </button>
         )}
-        {/* SOS Trigger Removed - Use Physical Button */}
+        <button 
+          onClick={() => onToggleEmergency(nodeId, title)}
+          className={`emergency-btn ${emergencyActive ? 'active' : ''}`}
+          style={{ 
+            background: emergencyActive ? 'var(--danger)' : 'var(--danger)' , 
+            color: 'white',
+            border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem',
+            opacity: emergencyActive ? 1 : 0.6
+          }}
+        >
+          {emergencyActive ? "🛑 STOP SOS" : "🆘 SOS EMERGENCY"}
+        </button>
         <button 
           disabled={!online || (theftFlagged || blocked) && !emergencyActive}
           onClick={onToggleValve} 
@@ -431,8 +541,22 @@ const SettingsView = () => {
 // MAIN DASHBOARD
 // =========================
 const CONSUMER_NODES = [
-  { nodeId: 'consumer_node', name: 'Ramesh Kumar', location: 'Umaria, near BGI', hasSensor: true },
-  { nodeId: 'consumer_node_8266', name: 'Priya Patel', location: 'Pigdamber, near BGI', hasSensor: false },
+  { 
+    nodeId: 'consumer_node', 
+    name: 'Ramesh Kumar', 
+    location: 'Umaria, near BGI', 
+    hasSensor: true,
+    houseNum: 'H-101',
+    houseId: 'BGI-CON-001'
+  },
+  { 
+    nodeId: 'consumer_node_8266', 
+    name: 'Priya Patel', 
+    location: 'Pigdamber, near BGI', 
+    hasSensor: false,
+    houseNum: 'H-102',
+    houseId: 'BGI-CON-002'
+  },
 ];
 
 const Dashboard = () => {
@@ -440,9 +564,24 @@ const Dashboard = () => {
   const [valves, setValves] = useState({});
   const [accounts, setAccounts] = useState({});
   const [commands, setCommands] = useState({});
+  const [alertLogs, setAlertLogs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Popup state
+  const [popup, setPopup] = useState({ 
+    isOpen: false, title: '', message: '', icon: '', onConfirm: null, onCancel: null, confirmText: '', cancelText: '' 
+  });
+
   const navigate = useNavigate();
+
+  const showPopup = (config) => {
+    setPopup({ isOpen: true, ...config });
+  };
+
+  const closePopup = () => {
+    setPopup(prev => ({ ...prev, isOpen: false }));
+  };
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -481,13 +620,56 @@ const Dashboard = () => {
       setCommands(snapshot.val() || {});
     });
 
+    const alertLogsRef = ref(db, 'alertLogs');
+    const unsubscribeAlertLogs = onValue(alertLogsRef, (snapshot) => {
+      const logs = snapshot.val();
+      if (logs) {
+        const logsArray = Object.entries(logs).map(([id, val]) => ({ id, ...val }));
+        logsArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setAlertLogs(logsArray);
+      } else {
+        setAlertLogs([]);
+      }
+    });
+
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
       unsubscribeAccounts();
       unsubscribeCommands();
+      unsubscribeAlertLogs();
     };
   }, [navigate]);
+
+  // ---- INSTANT ALERT DETECTION ----
+  const [lastAlertCount, setLastAlertCount] = useState(0);
+  useEffect(() => {
+    if (alertLogs.length > lastAlertCount && lastAlertCount > 0) {
+      const newest = alertLogs[0];
+      if (newest && (newest.type === 'THEFT' || newest.type === 'TAMPER')) {
+        const consumer = CONSUMER_NODES.find(c => c.name.includes(newest.node) || newest.msg.includes(c.name) || newest.node === 'Ramesh' || newest.node === 'Priya');
+        
+        // Show high-visibility emergency modal
+        showPopup({
+          type: 'EMERGENCY',
+          message: newest.msg,
+          details: {
+            name: consumer?.name || newest.node,
+            houseId: consumer?.houseId || 'N/A',
+            reason: newest.type === 'THEFT' ? 'Discrepancy detected' : 'Device moved/tilted'
+          },
+          onConfirm: closePopup
+        });
+        
+        // Try to play alert sound
+        try { 
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/995/995-preview.mp3');
+          audio.play(); 
+        } catch(e) {}
+      }
+    }
+    setLastAlertCount(alertLogs.length);
+  }, [alertLogs.length]);
 
 
   // ===== AUTO THEFT DETECTION =====
@@ -536,15 +718,32 @@ const Dashboard = () => {
     navigate('/');
   };
 
-  const handleResetAllData = async () => {
+  const handleResetAllData = () => {
     if (!data || !data.gov_node) {
-      alert("⚠️ Cannot reset: No live connection to sensor data.");
+      showPopup({
+        title: "Connection Error",
+        message: "Cannot reset: No live connection to sensor data.",
+        icon: "⚠️",
+        onConfirm: closePopup
+      });
       return;
     }
 
-    if (!window.confirm("⚠️ Are you sure you want to RESET ALL DATA? This will set all total litres to zero across all nodes and start fresh.")) {
-      return;
-    }
+    showPopup({
+      title: "Confirm System Reset",
+      message: "Are you sure you want to RESET ALL DATA? This will set all total litres to zero across all nodes and archive the current session.",
+      icon: "🔄",
+      confirmText: "Reset Now",
+      cancelText: "Cancel",
+      onCancel: closePopup,
+      onConfirm: async () => {
+        closePopup();
+        await performReset();
+      }
+    });
+  };
+
+  const performReset = async () => {
 
     const currentGovNode = data.gov_node;
     const currentTheftStatus = currentGovNode.theftStatus || 'NORMAL';
@@ -632,13 +831,18 @@ const Dashboard = () => {
 
   const handleBlockToggle = (nodeId) => {
     const account = accounts[nodeId] || {};
-    if (account.theftFlagged || account.blocked) {
+    const nodeData = data[nodeId] || {};
+    if (account.theftFlagged || account.blocked || nodeData.tamperDetected) {
       // Unblock: clear flags and re-open valve
       set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
       set(ref(db, `accounts/${nodeId}/blocked`), false);
       set(ref(db, `accounts/${nodeId}/theftReason`), null);
       set(ref(db, `accounts/${nodeId}/theftTime`), null);
       set(ref(db, `valves/${nodeId}/gov`), true);
+      // Clear tamper in sensorData and send command
+      set(ref(db, `sensorData/${nodeId}/tamperDetected`), false);
+      set(ref(db, `commands/${nodeId}/clearTamper`), true);
+      showPopup({ title: 'User Unblocked', message: 'All violations cleared. Valve opened and tamper flags reset.', icon: '✅', onConfirm: closePopup });
     } else {
       // Block user manually
       set(ref(db, `accounts/${nodeId}/blocked`), true);
@@ -732,12 +936,152 @@ const Dashboard = () => {
               account={accounts[nodeId] || { balance: 500 }}
               onToggleValve={() => set(ref(db, `valves/${nodeId}/gov`), !(valves[nodeId]?.gov ?? true))}
               onBlockToggle={() => handleBlockToggle(nodeId)}
+              onClearTamper={(id) => {
+                set(ref(db, `commands/${id}/clearTamper`), true);
+                showPopup({ title: 'Tamper Cleared', message: `Tamper flag cleared for ${name}. MPU baseline recalibrated.`, icon: '✅', onConfirm: closePopup });
+              }}
+              onToggleEmergency={(id, name) => {
+                const isActive = data[id]?.emergencyActive || false;
+                showPopup({
+                  title: isActive ? "Stop Emergency" : "Emergency Override",
+                  message: isActive ? `Stop emergency supply for ${name}?` : `Grant emergency water access to ${name}? This will provide 1L of water even if blocked.`,
+                  icon: "🆘",
+                  confirmText: isActive ? "Stop Now" : "Grant Access",
+                  cancelText: "Cancel",
+                  onCancel: closePopup,
+                  onConfirm: () => {
+                    set(ref(db, `commands/${id}/triggerEmergency`), true);
+                    closePopup();
+                  }
+                });
+              }}
             />
           ))}
         </div>
       </div>
     </div>
   );
+
+  const renderAlertLogs = () => (
+    <div className="main-content">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div>
+          <h2>🔔 System Alerts & Logs</h2>
+          <p style={{ color: 'var(--text-secondary)' }}>Historical record of theft attempts, tamper alerts, and motion detections.</p>
+        </div>
+        <button className="logout-btn" onClick={() => set(ref(db, 'alertLogs'), null)}>🗑️ Clear All Logs</button>
+      </div>
+
+      <div className="alert-logs-list">
+        {alertLogs.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: '4rem' }}>
+            <span style={{ fontSize: '3rem', display: 'block', marginBottom: '1rem' }}>✅</span>
+            <h3>All Systems Normal</h3>
+            <p style={{ color: 'var(--text-muted)' }}>No alerts have been recorded in the current session.</p>
+          </div>
+        ) : (
+          alertLogs.map((log) => (
+            <div className="alert-log-card" key={log.id}>
+              <div className={`alert-icon-box alert-icon-${log.type}`}>
+                {log.type === 'THEFT' ? '🕵️' : log.type === 'TAMPER' ? '🚨' : log.type === 'MOTION' ? '🫨' : '⚙️'}
+              </div>
+              <div className="alert-info-content">
+                <h4>{log.node} Node: {log.type}</h4>
+                <p>{log.msg}</p>
+              </div>
+              <div className="alert-time-stamp">
+                {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Unknown'}
+                <br />
+                <span style={{ opacity: 0.6, fontSize: '0.65rem' }}>{log.timestamp ? new Date(log.timestamp).toLocaleDateString() : ''}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  // ==========================
+  // VIOLATIONS TAB
+  // ==========================
+  const renderViolations = () => {
+    const blockedNodes = CONSUMER_NODES.filter(({ nodeId }) => {
+      const acct = accounts[nodeId] || {};
+      return acct.theftFlagged || acct.blocked || (data?.[nodeId]?.tamperDetected);
+    });
+    const theftLogs = alertLogs.filter(l => l.type === 'THEFT');
+    const tamperLogs = alertLogs.filter(l => l.type === 'TAMPER');
+
+    return (
+      <div className="main-content">
+        <h2>🚫 Violations & Blocked Users</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Government enforcement panel. Manage blocked consumers, theft cases, and tamper violations.</p>
+        
+        {/* Blocked Users */}
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>🔒 Currently Blocked ({blockedNodes.length})</h3>
+          {blockedNodes.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>✅ No consumers currently blocked.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ borderBottom: '2px solid var(--border-color)', textAlign: 'left' }}>
+                <th style={{ padding: '0.75rem' }}>Consumer</th>
+                <th>Status</th>
+                <th>Reason</th>
+                <th>Action</th>
+              </tr></thead>
+              <tbody>
+                {blockedNodes.map(({ nodeId, name }) => {
+                  const acct = accounts[nodeId] || {};
+                  const nd = data?.[nodeId] || {};
+                  return (
+                    <tr key={nodeId} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 600 }}>{name}<br/><code style={{fontSize:'0.7rem'}}>{nodeId}</code></td>
+                      <td><span className="status dirty" style={{fontSize:'0.75rem'}}>{acct.theftFlagged ? '🕵️ THEFT' : nd.tamperDetected ? '🚨 TAMPER' : '🔒 BLOCKED'}</span></td>
+                      <td style={{fontSize:'0.8rem', color:'var(--text-secondary)'}}>{acct.theftReason || (nd.tamperDetected ? 'Device moved/tilted' : 'Admin action')}</td>
+                      <td><button className="unblock-btn" onClick={() => handleBlockToggle(nodeId)}>✅ Unblock</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Theft Cases */}
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>🕵️ Theft Cases ({theftLogs.length})</h3>
+          {theftLogs.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No theft incidents recorded.</p>
+          ) : (
+            theftLogs.slice(0, 20).map(log => (
+              <div key={log.id} className="alert-log-card">
+                <div className="alert-icon-box alert-icon-THEFT">🕵️</div>
+                <div className="alert-info-content"><h4>{log.node}: {log.type}</h4><p>{log.msg}</p></div>
+                <div className="alert-time-stamp">{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Tamper Cases */}
+        <div className="card">
+          <h3 style={{ marginBottom: '1rem' }}>🚨 Tamper Cases ({tamperLogs.length})</h3>
+          {tamperLogs.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No tamper incidents recorded.</p>
+          ) : (
+            tamperLogs.slice(0, 20).map(log => (
+              <div key={log.id} className="alert-log-card">
+                <div className="alert-icon-box alert-icon-TAMPER">🚨</div>
+                <div className="alert-info-content"><h4>{log.node}: {log.type}</h4><p>{log.msg}</p></div>
+                <div className="alert-time-stamp">{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderAnalytics = () => (
     <div className="main-content">
@@ -778,45 +1122,87 @@ const Dashboard = () => {
     </div>
   );
 
+  // ==========================
+  // CONSUMERS REGISTRY
+  // ==========================
   const renderConsumers = () => (
     <div className="main-content">
-        <h2>👥 Registered Consumers</h2>
-        <div className="card">
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                        <th style={{ padding: '1rem' }}>Name</th>
-                        <th>Address</th>
-                        <th>Node ID</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {CONSUMER_NODES.map(({ nodeId, name, location }) => {
-                      const acct = accounts[nodeId] || { balance: 500 };
-                      const flagged = acct.theftFlagged || acct.blocked;
-                      return (
-                        <tr key={nodeId} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <td style={{ padding: '1rem' }}>{name}</td>
-                          <td>{location}</td>
-                          <td><code>{nodeId}</code></td>
-                          <td>
-                            <span style={{ fontWeight: 700, color: acct.balance > 100 ? 'var(--success)' : acct.balance > 0 ? 'var(--warning)' : 'var(--danger)' }}>
-                              ₹{(acct.balance ?? 500).toFixed(0)}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`status ${flagged ? 'dirty' : ''}`}>
-                              {flagged ? '🔒 Blocked' : 'Active'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-            </table>
-        </div>
+      <h2>👥 Consumer Registry</h2>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Full database of registered households and smart meters.</p>
+      
+      <div className="gov-table-container">
+        <table className="gov-table">
+          <thead>
+            <tr>
+              <th>House</th>
+              <th>Consumer Info</th>
+              <th>Live Status</th>
+              <th>Valve</th>
+              <th>Balance</th>
+              <th>Meter Stats</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {CONSUMER_NODES.map((consumer) => {
+              const nodeData = data?.[consumer.nodeId] || {};
+              const acct = accounts[consumer.nodeId] || {};
+              const online = isNodeOnline(nodeData);
+              const tamper = nodeData?.tamperDetected;
+              const theft = acct.theftFlagged;
+              const valveState = nodeData?.valveState;
+              
+              return (
+                <tr key={consumer.nodeId}>
+                  <td style={{ paddingLeft: '1.5rem' }}>
+                    <div style={{ fontWeight: 800 }}>{consumer.houseNum}</div>
+                    <div className="id-badge">{consumer.houseId}</div>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{consumer.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{consumer.location}</div>
+                  </td>
+                  <td>
+                    <span className={`status ${online ? (tamper || theft ? 'dirty' : '') : 'offline'}`} style={{ fontSize: '0.7rem' }}>
+                      {online ? (theft ? 'THEFT ALERT' : tamper ? 'TAMPER ALERT' : 'ONLINE') : 'OFFLINE'}
+                    </span>
+                    <div style={{ fontSize: '0.65rem', marginTop: '4px', opacity: 0.7 }}>
+                      {nodeData.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never seen'}
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ 
+                      color: valveState ? 'var(--success)' : 'var(--danger)', 
+                      fontWeight: 700, 
+                      fontSize: '0.8rem' 
+                    }}>
+                      {valveState ? '🟢 OPEN' : '🔴 CLOSED'}
+                    </span>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 700, color: acct.balance > 100 ? 'var(--success)' : 'var(--danger)' }}>
+                      ₹{(acct.balance ?? 500).toFixed(2)}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ fontSize: '0.85rem' }}>
+                      💧 <strong>{(nodeData.flowRate || 0).toFixed(1)}</strong> L/min
+                    </div>
+                    <div style={{ fontSize: '0.85rem' }}>
+                      📊 <strong>{(nodeData.totalLitres || 0).toFixed(1)}</strong> Total Litres
+                    </div>
+                  </td>
+                  <td>
+                    <button className="reset-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => setActiveTab('dashboard')}>
+                      View Live
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
@@ -831,6 +1217,11 @@ const Dashboard = () => {
         
         <nav className="sidebar-nav">
           <div className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</div>
+          <div className={`nav-item alerts-tab ${activeTab === 'alerts' ? 'active' : ''}`} onClick={() => setActiveTab('alerts')}>
+            🔔 Alerts
+            {alertLogs.length > 0 && <span className="alert-badge">{alertLogs.length > 9 ? '9+' : alertLogs.length}</span>}
+          </div>
+          <div className={`nav-item ${activeTab === 'violations' ? 'active' : ''}`} onClick={() => setActiveTab('violations')}>🚫 Violations</div>
           <div className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>📈 Analytics</div>
           <div className={`nav-item ${activeTab === 'consumers' ? 'active' : ''}`} onClick={() => setActiveTab('consumers')}>👥 Consumers</div>
           <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>⚙️ Settings</div>
@@ -860,11 +1251,25 @@ const Dashboard = () => {
           />
 
           {activeTab === 'dashboard' && renderDashboard()}
+          {activeTab === 'alerts' && renderAlertLogs()}
+          {activeTab === 'violations' && renderViolations()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'consumers' && renderConsumers()}
           {activeTab === 'settings' && <SettingsView />}
         </div>
       </main>
+
+      {/* Global Custom Popup */}
+      <CustomPopup 
+        isOpen={popup.isOpen}
+        title={popup.title}
+        message={popup.message}
+        icon={popup.icon}
+        confirmText={popup.confirmText}
+        cancelText={popup.cancelText}
+        onConfirm={popup.onConfirm}
+        onCancel={popup.onCancel}
+      />
     </div>
   );
 };

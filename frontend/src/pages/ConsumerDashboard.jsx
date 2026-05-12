@@ -371,14 +371,27 @@ const ConsumerDashboard = () => {
                     {account.theftFlagged ? 'Flagged for suspicious activity' : account.blocked ? 'Blocked by authority' : balance <= 0 ? 'Insufficient balance' : !valveData.gov ? 'Government Override Active' : (myNodeOnline ? 'Active Control' : 'Device Offline')}
                   </p>
                 </div>
-                <button 
-                  disabled={!myNodeOnline || !valveData.gov || isBlocked}
-                  onClick={toggleValve} 
-                  className={`valve-btn ${valveData.user ? 'open' : 'closed'}`}
-                  style={{ padding: '0.6rem 1.5rem' }}
-                >
-                  {isBlocked ? "LOCKED" : !valveData.gov ? "LOCKED" : (valveData.user ? "ON" : "OFF")}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button 
+                    onClick={triggerEmergency}
+                    className={`emergency-btn ${emergencyActive ? 'active' : ''}`}
+                    style={{ 
+                      background: emergencyActive ? 'var(--danger)' : '#fee2e2', 
+                      color: emergencyActive ? 'white' : 'var(--danger)',
+                      border: 'none', padding: '0.6rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem'
+                    }}
+                  >
+                    {emergencyActive ? "🛑 STOP SOS" : "🆘 SOS"}
+                  </button>
+                  <button 
+                    disabled={!myNodeOnline || !valveData.gov || isBlocked}
+                    onClick={toggleValve} 
+                    className={`valve-btn ${valveData.user ? 'open' : 'closed'}`}
+                    style={{ padding: '0.6rem 1.5rem' }}
+                  >
+                    {isBlocked ? "LOCKED" : !valveData.gov ? "LOCKED" : (valveData.user ? "CLOSE" : "OPEN")}
+                  </button>
+                </div>
               </div>
           </div>
 

@@ -1,356 +1,215 @@
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
-
-// Provide the token generation process info.
 #include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
 #include "addons/RTDBHelper.h"
-
 #include <WiFiManager.h>
 #include <Ticker.h>
-// =========================
-// NETWORK & FIREBASE CONFIG
-// =========================
 #include "env.h"
 
+// ========================= FIREBASE =========================
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// Use a static or global instance for WiFiManager on ESP32
-static WiFiManager wifiManager;
-Ticker blinker;
+// ========================= TIMING =========================
+unsigned long sendDataPrevMillis = 0;
+unsigned long sendFlowPrevMillis = 0;
+unsigned long theftCheckMillis   = 0;
+unsigned long lastCmdCheck       = 0;
 
+// ========================= SENSORS =========================
+#define TURBIDITY_PIN 33
+#define TDS_PIN 32
+#define FLOW_SENSOR_PIN 27
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
 #endif
 
-void blink() {
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-}
+Ticker blinker;
+void blink() { digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); }
 
-// Callback when entering config mode
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
-}
-
-unsigned long sendDataPrevMillis = 0;
-unsigned long sendFlowPrevMillis = 0;
-unsigned long theftCheckMillis = 0;
-unsigned long theftAlertStartTime = 0; // Timer for theft flagging
-bool theftFlaggedInSession = false;   // Flag to avoid repeated writes
-
-// =========================
-// SENSOR PINS
-// =========================
-#define TURBIDITY_PIN 33
-#define TDS_PIN 32
-#define FLOW_SENSOR_PIN 27  // Standard Flow Sensor Signal Pin
-
-
-float turbidityThreshold = 3.15;
-
-// =========================
-// FLOW SENSOR (YF-S401)
-// =========================
-// Standard Flow Sensor: ~96 pulses per liter per minute
+// ========================= FLOW LOGIC =========================
 volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min (Smoothed)
-float totalLitres = 0.0;     // Total litres since boot
+float flowRate = 0.0;
+float govSupplyLitres = 0.0;     // Total litres passed through main supply
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // Calibrated for YF-S401 (6mm ID)
+float flowCalibration = 98.0;
 
-// Theft Detection
-float govSupplyLitres = 0.0;     // Total litres from gov supply
-float consumerTotalLitres = 0.0; // Sum of all consumer usage (from Firebase)
-String theftStatus = "NORMAL";   // NORMAL, SUSPICIOUS, ALERT
+// ========================= THEFT LOGIC =========================
+String theftStatus = "NORMAL";
+unsigned long theftAlertStartTime = 0;
+bool theftFlaggedGlobal = false;
 
-// IRAM_ATTR for ESP32 interrupt
-volatile unsigned long lastPulseTime = 0;
 void IRAM_ATTR flowPulseISR() {
+  static unsigned long lastPulse = 0;
   unsigned long now = micros();
-  // Standard sensors don't pulse faster than 1-2kHz. 
-  // 500us debounce filters out noise > 2kHz.
-  if (now - lastPulseTime > 500) {
+  // Increased to 1ms debounce for fragile sensors
+  if (now - lastPulse > 1000) {
     pulseCount++;
-    lastPulseTime = now;
+    lastPulse = now;
   }
+}
+
+void logAlert(const char* node, const char* type, const char* msg) {
+  FirebaseJson json;
+  json.add("node", node);
+  json.add("type", type);
+  json.add("msg", msg);
+  json.set("timestamp/.sv", "timestamp");
+  Firebase.RTDB.pushJSON(&fbdo, F("alertLogs"), &json);
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); // Wait for serial to stabilize
-  Serial.println("\n\n====================================");
-  Serial.println("JalBoard Government Node Starting...");
-  Serial.println("====================================\n");
-
-  // 1. Connect to WiFi using WiFiManager
-  WiFi.mode(WIFI_STA); // Explicitly set mode for better stability
-  
-  // wifiManager.resetSettings(); // Uncomment to wipe stored Wi-Fi credentials
-
-  // Set timeout for connecting to saved WiFi before starting AP
-  // wifiManager.setConnectTimeout(30);
+  delay(1000);
+  Serial.println(F("\n== Gov Node Starting =="));
 
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW); // LED OFF while connecting
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // Disable power save for stability
+  WiFiManager wm;
+  wm.setAPCallback([](WiFiManager *wm) {
+    blinker.attach(0.2, blink);
+  });
 
-  // Set callback for when AP mode starts
-  wifiManager.setAPCallback(configModeCallback);
-
-  Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "JalBoard_GovNode_AP"
-  if (!wifiManager.autoConnect("JalBoard_GovNode_AP")) {
-    Serial.println("Failed to connect or timeout reached. Restarting...");
+  if (!wm.autoConnect("JalBoard_GovNode_AP")) {
     delay(3000);
-    ESP.restart(); // Reset and try again
+    ESP.restart();
   }
-
-  // Once connected, stop blinking and keep LED ON
   blinker.detach();
-  digitalWrite(LED_BUILTIN, HIGH); 
+  digitalWrite(LED_BUILTIN, HIGH);
 
-  Serial.println();
-  Serial.print("Connected with IP: ");
-  Serial.println(WiFi.localIP());
-  Serial.println();
-
-  digitalWrite(LED_BUILTIN, HIGH); // LED ON when connected
-
-  // Firebase initialization below...
-
-  // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
-
-  // Sign up (Anonymous Authentication)
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Firebase sign up OK");
-  } else {
-    Serial.printf("Firebase sign up failed: %s\n",
-                  config.signer.signupError.message.c_str());
-  }
-
+  Firebase.signUp(&config, &auth, "", "");
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-
-  // Set smaller response buffer size
   fbdo.setResponseSize(1024);
+  fbdo.setBSSLBufferSize(1024, 512);
 
-  // 3. Setup ADC
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
-
-  // 4. Setup Flow Sensor (YF-S201)
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   lastFlowCalc = millis();
   
-  Serial.println("Flow Sensor initialized on pin 27");
-  Serial.println("Setup complete!\n");
+  Serial.println(F("Gov Node Ready"));
 }
 
 void loop() {
-  // OTA Handle removed
+  // ---- 0. CONNECTION WATCHDOG ----
+  static unsigned long lastWifiCheck = 0;
+  if (WiFi.status() != WL_CONNECTED && (millis() - lastWifiCheck > 2000)) {
+    lastWifiCheck = millis();
+    Serial.println("WiFi Lost. Reconnecting...");
+    WiFi.reconnect();
+  }
 
-  // 1. Check for Commands (Batch Fetch to reduce blocking)
-  static unsigned long lastCmdCheck = 0;
-  if (Firebase.ready() && (millis() - lastCmdCheck > 1000)) {
+  // ---- 1. COMMAND SYNC ----
+  if (Firebase.ready() && (millis() - lastCmdCheck > 1500)) {
     lastCmdCheck = millis();
     if (Firebase.RTDB.getJSON(&fbdo, F("commands"))) {
-      FirebaseJson &json = fbdo.jsonObject();
-      FirebaseJsonData jsonData;
-      
-      // System Reset
-      json.get(jsonData, F("resetAll"));
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-        Serial.println(F("🔄 SYSTEM RESET REQUESTED..."));
-        totalLitres = 0;
-        govSupplyLitres = 0;
-        flowRate = 0;
-        pulseCount = 0;
-        consumerTotalLitres = 0;
-        theftStatus = "NORMAL";
-        theftAlertStartTime = 0;
-        theftFlaggedInSession = false;
-        // Force update status immediately
-        Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/totalLitres"), 0);
-        Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), 0);
-        Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"), 0);
-        Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), F("NORMAL"));
+      FirebaseJson &j = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (j.get(d, F("resetAll")) && d.success && d.boolValue) {
+        govSupplyLitres = 0; flowRate = 0; pulseCount = 0;
+        theftStatus = "NORMAL"; theftAlertStartTime = 0;
+        Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
+        Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), "NORMAL");
       }
     }
   }
 
-  // 2. Regular flow calculations
+  // ---- 2. FLOW CALCULATION ----
   if (millis() - lastFlowCalc >= 1000) {
-    unsigned long pulseCopy;
-    unsigned long elapsedMs = millis() - lastFlowCalc;
-    
+    unsigned long elapsed = millis() - lastFlowCalc;
     noInterrupts();
-    pulseCopy = pulseCount;
+    unsigned long pc = pulseCount;
     pulseCount = 0;
     interrupts();
-    
-    float elapsedSec = elapsedMs / 1000.0;
-    
-    if (elapsedSec > 0) {
-      float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / flowCalibration;
-      
-      if (rawFlow > 80.0) rawFlow = 0; 
-      
-      if (pulseCopy == 0) {
-        flowRate = flowRate * 0.7; 
-      } else {
-        flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
-      }
-      
+
+    float sec = elapsed / 1000.0;
+    if (sec > 0) {
+      float hz = pc / sec;
+      float raw = hz / flowCalibration;
+      flowRate = (pc == 0) ? flowRate * 0.7 : (flowRate * 0.7 + raw * 0.3);
       if (flowRate < 0.05) flowRate = 0;
-    } else {
-      flowRate = 0;
     }
-    
-    float pulsesPerLitre = flowCalibration * 60.0;
-    float litresThisInterval = 0;
-    if (pulsesPerLitre > 0) {
-      litresThisInterval = (float)pulseCopy / pulsesPerLitre;
-    }
-    
-    if (litresThisInterval > 0) {
-      totalLitres += litresThisInterval;
-      govSupplyLitres += litresThisInterval;
-    }
-    
+    float ppl = flowCalibration * 60.0;
+    if (ppl > 0) govSupplyLitres += (float)pc / ppl;
     lastFlowCalc = millis();
   }
 
-  // 3. Theft / Leakage Check (every 30 seconds)
-  if (Firebase.ready() && (millis() - theftCheckMillis > 30000 || theftCheckMillis == 0)) {
+  // ---- 3. ADVANCED THEFT DETECTION (every 5s) ----
+  if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    float totalConsumer = 0.0;
-    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/totalLitres"))) {
-      totalConsumer += fbdo.floatData();
-    }
-    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"))) {
-      totalConsumer += fbdo.floatData();
+    // Fetch real-time Ramesh flow
+    float rameshFlow = 0.0;
+    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/flowRate"))) {
+      rameshFlow = fbdo.floatData();
     }
     
-    consumerTotalLitres = totalConsumer;
+    // Check tamper flags
+    bool rTamper = false;
+    if (Firebase.RTDB.getBool(&fbdo, F("sensorData/consumer_node/tamperDetected"))) rTamper = fbdo.boolData();
     
-    bool rameshTamper = false;
-    bool priyaTamper = false;
-    if (Firebase.RTDB.getBool(&fbdo, F("sensorData/consumer_node/tamperDetected"))) {
-      rameshTamper = fbdo.boolData();
+    static bool lastRTamper = false;
+    if (rTamper && !lastRTamper) {
+      logAlert("Ramesh", "TAMPER", "Meter displacement detected! Auto-blocking node.");
+      Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+      Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Meter Tampering (MPU Tilt)");
     }
-    if (Firebase.RTDB.getBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"))) {
-      priyaTamper = fbdo.boolData();
-    }
+    lastRTamper = rTamper;
 
-    if (rameshTamper) Serial.println(F("🚨 ALERT: Tamper detected at Ramesh's node!"));
-    if (priyaTamper) Serial.println(F("🚨 ALERT: Tamper detected at Priya's node!"));
-    
-    float difference = govSupplyLitres - consumerTotalLitres;
-    float tolerance = govSupplyLitres * 0.15;
-    
-    String currentTheftAssessment = "NORMAL";
-    if (govSupplyLitres > 2.0) { 
-      if (difference > tolerance && difference > 1.0) {
-        if (difference > govSupplyLitres * 0.30) {
-          currentTheftAssessment = "ALERT";
-        } else {
-          currentTheftAssessment = "SUSPICIOUS";
-        }
-      }
-    }
-
-    if (currentTheftAssessment != "NORMAL") {
+    // RULE: If Gov Supply has flow (>0.1) but Consumer shows 0 for > 5s
+    if (flowRate > 0.1 && rameshFlow < 0.02) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
-        Serial.println(F("⚠️ Potential theft detected. Monitoring for 5 seconds..."));
+        theftStatus = "PENDING_ALERT";
       } else if (millis() - theftAlertStartTime > 5000) {
         if (theftStatus != "THEFT FLAGGED") {
-            theftStatus = "THEFT FLAGGED";
-            Serial.println(F("🚨 THEFT FLAGGED: Persistent discrepancy detected for > 5s!"));
-        }
-        if (!theftFlaggedInSession) {
-            theftFlaggedInSession = true;
-            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
-            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node_8266/theftFlagged"), true);
-            Serial.println(F("📝 Database updated: Accounts marked as THEFT FLAGGED."));
+          theftStatus = "THEFT FLAGGED";
+          logAlert("System", "THEFT", "Ramesh node: Main supply flowing but consumer meter shows 0. Blocking.");
+          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+          Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
+          Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Main supply bypass suspected (Flow mismatch)");
         }
       }
     } else {
       theftAlertStartTime = 0;
-      theftStatus = "NORMAL";
-      theftFlaggedInSession = false;
+      if (theftStatus != "THEFT FLAGGED") theftStatus = "NORMAL";
     }
     
     Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), theftStatus);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"), govSupplyLitres);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/consumerTotalLitres"), consumerTotalLitres);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowDifference"), govSupplyLitres - consumerTotalLitres);
   }
 
-  // 4. Send Flow Data (every 1 second)
-  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
+  // ---- 4. DATA SYNC ----
+  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 2000)) {
     sendFlowPrevMillis = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), flowRate);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/totalLitres"), totalLitres);
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
   }
 
-  // 5. Send sensor data every 5 seconds
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+  // ---- 5. WATER QUALITY (every 10s) ----
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 10000)) {
     sendDataPrevMillis = millis();
-
-    long turbSum = 0;
-    for (int i = 0; i < 20; i++) {
-      turbSum += analogRead(TURBIDITY_PIN);
-      delay(2);
-    }
-    float turbidityVoltage = (turbSum / 20.0) * (3.3 / 4095.0);
-
-    String waterStatus;
-    bool turbConnected = (turbidityVoltage > 0.1);
     
-    if (!turbConnected) waterStatus = "NOT CONNECTED";
-    else if (turbidityVoltage > turbidityThreshold) waterStatus = "CLEAR";
-    else waterStatus = "DIRTY";
+    // Simple averaging for stability
+    long tSum = 0; for(int i=0;i<10;i++){ tSum += analogRead(TURBIDITY_PIN); delay(5); }
+    float tVolts = (tSum / 10.0) * (3.3 / 4095.0);
+    
+    long dSum = 0; for(int i=0;i<10;i++){ dSum += analogRead(TDS_PIN); delay(5); }
+    float dVolts = (dSum / 10.0) * (3.3 / 4095.0);
+    float tds = (133.42*dVolts*dVolts*dVolts - 255.86*dVolts*dVolts + 857.39*dVolts) * 0.5;
 
-    long tdsSum = 0;
-    for (int i = 0; i < 20; i++) {
-      tdsSum += analogRead(TDS_PIN);
-      delay(2);
-    }
-    float tdsVoltage = (tdsSum / 20.0) * (3.3 / 4095.0);
-    float tdsValue = (133.42 * tdsVoltage * tdsVoltage * tdsVoltage -
-                      255.86 * tdsVoltage * tdsVoltage + 857.39 * tdsVoltage) * 0.5;
-
-    bool tdsConnected = (tdsVoltage > 0.1);
-    bool flowConnected = (totalLitres > 0 || flowRate > 0 || millis() < 60000);
-
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), turbConnected);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), tdsConnected);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/flowConnected"), flowConnected);
-
-    if (turbConnected) Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), turbidityVoltage);
-    if (tdsConnected) Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tdsValue);
-
-    if (!Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), waterStatus)) {
-      Serial.print(F("Firebase Write Error: "));
-      Serial.println(fbdo.errorReason().c_str());
-    }
-
-    Serial.println(F("------------------------"));
-    Serial.print(F("Turbidity: ")); Serial.print(turbidityVoltage); Serial.print(F("V (")); Serial.print(waterStatus); Serial.println(F(")"));
-    Serial.print(F("TDS: ")); Serial.print(tdsValue); Serial.println(F(" ppm"));
-    Serial.print(F("Flow: ")); Serial.print(flowRate); Serial.println(F(" L/min"));
-    Serial.println(F("------------------------"));
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), tVolts);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tds);
+    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), (tVolts > 3.0) ? "CLEAR" : "DIRTY");
+    
+    Serial.printf("Gov Flow:%.2f | Supply:%.2f | TDS:%.0f | Status:%s\n", 
+      flowRate, govSupplyLitres, tds, (tVolts > 3.0) ? "CLEAR" : "DIRTY");
   }
 }

@@ -1,328 +1,261 @@
+// ================================================
+// BGI Smart Water Grid — Consumer Priya (ESP8266)
+// Valve-only node (no flow sensor installed)
+// Production-stable firmware for 24/7 operation
+// ================================================
 #include <ESP8266WiFi.h>
 #include <Firebase_ESP_Client.h>
-
-// Provide the token generation process info.
 #include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
 #include "addons/RTDBHelper.h"
-
 #include <WiFiManager.h>
 #include <Ticker.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-// =========================
-// NETWORK & FIREBASE CONFIG
-// =========================
 #include "env.h"
 
+// ========================= FIREBASE =========================
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-unsigned long sendDataPrevMillis = 0;
-unsigned long lastValveCheckMillis = 0;
+// ========================= TIMING =========================
+unsigned long sendDataPrevMillis  = 0;
+unsigned long lastControlCheckMs  = 0;
 Ticker blinker;
 
-void blink() {
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+void blink() { digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); }
+void configModeCallback(WiFiManager *wm) {
+  Serial.println(F("AP Config Mode"));
+  blinker.attach(0.2, blink);
 }
 
+// ========================= MPU6050 =========================
 Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX, baseAccelY, baseAccelZ;
 
-// Callback when entering config mode
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
-}
-
-// =========================
-// VALVE PIN
-// =========================
-#define RELAY_PIN D3 // Relay moved to D3 (GPIO0) to free D1/D2 for I2C
-#define RELAY_ON LOW   
-#define RELAY_OFF HIGH 
-
-// =========================
-// EMERGENCY BUTTON
-// =========================
+// ========================= HARDWARE PINS =========================
+#define RELAY_PIN D3
+#define RELAY_ON LOW
+#define RELAY_OFF HIGH
 #define EMERGENCY_BUTTON_PIN D7
-bool emergencyActive = false;
-int emergencySecondsRemaining = 0;
+
+// ========================= STATE =========================
+bool  emergencyActive  = false;
+bool  tamperDetected   = false;
+bool  currentValveState = false;
+float flowRate         = 0.0;   // Always 0 (no sensor)
+float totalLitres      = 0.0;   // Always 0 (no sensor)
+float emergencyLitres  = 0.0;   // Always 0 (no sensor)
+int   emergencySeconds = 0;
 unsigned long lastEmergencyDec = 0;
 
-// =========================
-// FLOW SENSOR — NOT INSTALLED on Priya node (valve-only)
-// Variables kept for Firebase compatibility (always report 0)
-// =========================
-float flowRate = 0.0;
-float totalLitres = 0.0;
-
-// Tamper detection
-bool tamperDetected = false;
-bool currentValveState = false;
-
-void triggerEmergency() {
-  if (!emergencyActive) {
-    Serial.println("🆘 EMERGENCY MODE ACTIVATED: Granting 60 Seconds...");
-    emergencyActive = true;
-    emergencySecondsRemaining = 60; // 1 Minute for Priya
-    lastEmergencyDec = millis();
+// ========================= BUTTON ISR =========================
+volatile bool physicalEmergencyRequested = false;
+void ICACHE_RAM_ATTR buttonISR() {
+  static unsigned long lastBtn = 0;
+  if (millis() - lastBtn > 300) {
+    physicalEmergencyRequested = true;
+    lastBtn = millis();
   }
 }
 
+// ========================= ALERT LOGGER =========================
+void logAlert(const char* node, const char* type, const char* msg) {
+  FirebaseJson json;
+  json.add("node", node);
+  json.add("type", type);
+  json.add("msg", msg);
+  json.set("timestamp/.sv", "timestamp");
+  Firebase.RTDB.pushJSON(&fbdo, F("alertLogs"), &json);
+}
 
+// ========================= EMERGENCY TOGGLE =========================
+void toggleEmergency() {
+  emergencyActive = !emergencyActive;
+  Serial.printf("SOS EMERGENCY: %s\n", emergencyActive ? "ON" : "OFF");
+  if (emergencyActive) {
+    emergencySeconds = 60;
+    lastEmergencyDec = millis();
+  } else {
+    emergencySeconds = 0;
+  }
+  Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+  logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED (button)" : "Emergency DISABLED (button)");
+}
 
+// ========================= SETUP =========================
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n\n====================================");
-  Serial.println("Consumer Priya Node (Valve Only) Starting...");
-  Serial.println("====================================\n");
-  
-  // 1. Connect to WiFi using WiFiManager
+  Serial.println(F("\n== Priya Consumer Node (Valve Only) Starting =="));
+
   WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  WiFiManager wifiManager;
-  
+  WiFiManager wm;
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, HIGH);
+  wm.setAPCallback(configModeCallback);
 
-  wifiManager.setAPCallback(configModeCallback);
-
-  Serial.println("Connecting to Wi-Fi...");
-  if (!wifiManager.autoConnect("Consumer_Priya_AP")) {
-    Serial.println("Failed to connect, restarting...");
+  if (!wm.autoConnect("Consumer_Priya_AP")) {
     delay(3000);
     ESP.restart();
   }
-
   blinker.detach();
-  digitalWrite(LED_BUILTIN, LOW); 
+  digitalWrite(LED_BUILTIN, LOW);
 
-  // 2. Initialize Firebase
+  // Firebase init
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
-
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Firebase sign up OK");
-  } else {
-    Serial.printf("Firebase sign up failed: %s\n", config.signer.signupError.message.c_str());
-  }
-
+  Firebase.signUp(&config, &auth, "", "");
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-
-  // Set smaller response buffer size to save RAM
   fbdo.setResponseSize(1024);
-  
-  // 3. Setup Valve Relay
-  pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  fbdo.setBSSLBufferSize(1024, 512);
 
-  // 4. Initialize MPU6050
-  Wire.begin(D2, D1); // SDA, SCL
-  if (!mpu.begin()) {
-    Serial.println("Failed to find MPU6050 chip");
-    mpuInitialized = false;
-  } else {
-    Serial.println("MPU6050 Found!");
+  // Hardware init
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
+  attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
+
+  // MPU6050
+  Wire.begin(D2, D1);
+  if (mpu.begin()) {
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
     mpuInitialized = true;
-    
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
     baseAccelX = a.acceleration.x;
     baseAccelY = a.acceleration.y;
     baseAccelZ = a.acceleration.z;
+    Serial.println(F("MPU6050 OK"));
+  } else {
+    mpuInitialized = false;
+    Serial.println(F("MPU6050 FAIL"));
   }
-
-  // 5. Flow Sensor — NOT INSTALLED on Priya (no pin setup needed)
-
-  Serial.println("Setup complete!\n");
+  Serial.printf("Setup OK | Heap: %d\n", ESP.getFreeHeap());
 }
 
-
+// ========================= MAIN LOOP =========================
 void loop() {
 
-  // 0. Check Physical Emergency Button
-  if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
-    triggerEmergency();
+  // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
+  if (physicalEmergencyRequested) {
+    physicalEmergencyRequested = false;
+    toggleEmergency();
   }
 
-  // 1. Check for Reset/Emergency Command (Batch Fetch to reduce blocking)
-  static unsigned long lastCmdCheck = 0;
-  if (Firebase.ready() && (millis() - lastCmdCheck > 2000)) { 
-    lastCmdCheck = millis();
-    yield(); 
+  // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
+  if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
+    lastControlCheckMs = millis();
 
-    if (Firebase.RTDB.getJSON(&fbdo, F("commands"))) {
-      FirebaseJson &json = fbdo.jsonObject();
-      FirebaseJsonData jsonData;
-      bool didReset = false;
-      
-      // Check System-wide Reset OR Individual Reset
-      bool resetReq = false;
-      json.get(jsonData, F("resetAll"));
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
-      json.get(jsonData, F("consumer_node_8266/reset"));
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
+    // Read valve state
+    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
+      FirebaseJson &j = fbdo.jsonObject();
+      FirebaseJsonData d;
+      bool gov = true, usr = true;
+      if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
+      if (j.get(d, F("user")) && d.success) usr = d.boolValue;
+      currentValveState = (gov && usr && !tamperDetected) || emergencyActive;
+      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+    }
+    yield();
 
-      if (resetReq) {
-        Serial.println(F("🔄 RESET REQUESTED..."));
-        totalLitres = 0;
-        flowRate = 0;
-        tamperDetected = false;
-        lastTamperTime = 0;
-        emergencyActive = false;
-        emergencySecondsRemaining = 0;
-        didReset = true;
-        // Force update status
-        Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
-        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+    // Read commands
+    if (Firebase.RTDB.getJSON(&fbdo, F("commands/consumer_node_8266"))) {
+      FirebaseJson &j = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (j.get(d, F("reset")) && d.success && d.boolValue) {
+        tamperDetected = false; emergencyActive = false;
+        emergencySeconds = 0;
+        Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/reset"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
-        Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+      }
+      if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
+        toggleEmergency();
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
       }
-
-      // Check Individual Emergency Trigger (SKIP if we just reset)
-      if (!didReset) {
-        json.get(jsonData, F("consumer_node_8266/triggerEmergency"));
-        if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-          triggerEmergency();
-          Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
-        }
-        // Auto-deactivate emergency when command is cleared from dashboard
-        if (emergencyActive && jsonData.success && jsonData.type == "boolean" && !jsonData.boolValue) {
-          Serial.println(F("🛑 Emergency deactivated via Firebase command."));
-          emergencyActive = false;
-          emergencySecondsRemaining = 0;
-          Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
-          Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), 0);
+      if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {
+        tamperDetected = false;
+        lastTamperTime = 0;
+        Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/clearTamper"), false);
+        Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
+        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), true); // UNBLOCK
+        if (mpuInitialized) {
+          sensors_event_t a, g, temp;
+          mpu.getEvent(&a, &g, &temp);
+          baseAccelX = a.acceleration.x;
+          baseAccelY = a.acceleration.y;
+          baseAccelZ = a.acceleration.z;
         }
       }
     }
-    yield();
   }
 
-  // 2. Emergency Timer Management
+  // ---- 2. EMERGENCY TIMER (countdown) ----
   if (emergencyActive && (millis() - lastEmergencyDec >= 1000)) {
     lastEmergencyDec = millis();
-    emergencySecondsRemaining--;
-    if (emergencySecondsRemaining <= 0) {
-      emergencySecondsRemaining = 0;
+    emergencySeconds--;
+    if (emergencySeconds <= 0) {
+      emergencySeconds = 0;
       emergencyActive = false;
-      Serial.println("🆘 EMERGENCY TIMER FINISHED.");
+      Serial.println(F("Emergency timer finished."));
     }
   }
 
-  // 3. Tamper detection
-  static unsigned long lastMPUCheck = 0;
-  if (mpuInitialized && (millis() - lastMPUCheck > 500)) {
-    lastMPUCheck = millis();
+  // ---- 3. TAMPER DETECTION via MPU6050 (every 500ms) ----
+  static unsigned long lastMPU = 0;
+  static unsigned long movementStart = 0;
+  if (mpuInitialized && (millis() - lastMPU > 500)) {
+    lastMPU = millis();
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
-    float diffX = abs(a.acceleration.x - baseAccelX);
-    float diffY = abs(a.acceleration.y - baseAccelY);
-    float diffZ = abs(a.acceleration.z - baseAccelZ);
-    
-    if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
-      tamperDetected = true;
-      lastTamperTime = millis();
+    float dx = abs(a.acceleration.x - baseAccelX);
+    float dy = abs(a.acceleration.y - baseAccelY);
+    float dz = abs(a.acceleration.z - baseAccelZ);
+    // Threshold increased to 3.0 + 1.5s persistence
+    if (dx > 3.0 || dy > 3.0 || dz > 3.0) {
+      if (movementStart == 0) movementStart = millis();
+      if (millis() - movementStart > 1500) {
+        if (!tamperDetected) {
+          tamperDetected = true;
+          lastTamperTime = millis();
+          logAlert("Priya", "TAMPER", "Persistent motion detected! Valve LOCKED.");
+          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
+        }
+      }
+    } else {
+      movementStart = 0;
     }
-    if (lastTamperTime > 0 && millis() - lastTamperTime > 30000) {
-      tamperDetected = false;
-      lastTamperTime = 0;
+    if (!tamperDetected) {
+      baseAccelX = baseAccelX * 0.95 + a.acceleration.x * 0.05;
+      baseAccelY = baseAccelY * 0.95 + a.acceleration.y * 0.05;
+      baseAccelZ = baseAccelZ * 0.95 + a.acceleration.z * 0.05;
     }
-    baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
-    baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
-    baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
   }
 
-  // 4. Valve & Command Status Logic (Batch Fetch to reduce blocking)
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 2000)) {
-    lastValveCheckMillis = millis();    if (Firebase.RTDB.getJSON(&fbdo, F("commands"))) {
-       FirebaseJson &json = fbdo.jsonObject();
-       FirebaseJsonData jsonData;
-       bool didReset = false;
-       
-       // System Reset
-       json.get(jsonData, F("resetAll"));
-       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-         totalLitres = 0;
-         flowRate = 0;
-         tamperDetected = false;
-         lastTamperTime = 0;
-         emergencyActive = false;
-         emergencySecondsRemaining = 0;
-         didReset = true;
-         // Force update
-         Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
-         Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
-         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
-         
-         // Immediate status sync to clear red alerts
-         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
-         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
-       }
-
-       // Check Individual Emergency Trigger (SKIP if we just reset)
-       if (!didReset) {
-         json.get(jsonData, F("consumer_node_8266/triggerEmergency"));
-         if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-            triggerEmergency();
-            Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
-         }
-         // Auto-deactivate emergency when command is cleared from dashboard
-         if (emergencyActive && jsonData.success && jsonData.type == "boolean" && !jsonData.boolValue) {
-            Serial.println(F("🛑 Emergency deactivated via Firebase command."));
-            emergencyActive = false;
-            emergencySecondsRemaining = 0;
-            Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
-            Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), 0);
-         }
-       }
-    }
-
-    // Check Valves
-    bool govState = true;
-    bool userState = true;
-    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node_8266/gov"))) govState = fbdo.boolData();
-    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node_8266/user"))) userState = fbdo.boolData();
-    
-    currentValveState = (govState && userState) || emergencyActive;
-    digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-    yield();
-  }
-
-  // 5. Flow sensor not installed — flowRate and totalLitres stay at 0
-
-  // 5. Sync Data (every 5 seconds)
+  // ---- 4. SYNC DATA (every 5s — no flow sensor, less frequent) ----
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
     sendDataPrevMillis = millis();
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), tamperDetected);
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/valveState"), currentValveState);
-    Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node_8266/lastSeen"));
-    
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), flowRate);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), totalLitres);
-    
-    // Emergency Status
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySecondsRemaining);
-    
-    Serial.printf("Status Sent | Valve: %s | Tamper: %s | Emergency: %s\n", 
-                  currentValveState ? "OPEN" : "CLOSED", 
-                  tamperDetected ? "YES" : "No",
-                  emergencyActive ? "ACTIVE" : "Off");
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySeconds);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), 0);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyLitres"), 0);
+    Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node_8266/lastSeen"));
+    Serial.printf("Valve:%s | Tamper:%s | Emg:%s | Heap:%d\n",
+      currentValveState ? "OPEN" : "CLOSED",
+      tamperDetected ? "YES" : "No",
+      emergencyActive ? "ACTIVE" : "Off",
+      ESP.getFreeHeap());
   }
 }
