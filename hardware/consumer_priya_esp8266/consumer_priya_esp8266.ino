@@ -244,13 +244,7 @@ void loop() {
          Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
        }
 
-       // Individual Emergency
-       json.get(jsonData, "consumer_node_8266/triggerEmergency");
-       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-          emergencyActive = true;
-          emergencySecondsRemaining = 60; // 1 min override
-          Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
-       }
+       // (Individual Emergency Removed - Use Physical Button)
     }
 
     // Check Valves

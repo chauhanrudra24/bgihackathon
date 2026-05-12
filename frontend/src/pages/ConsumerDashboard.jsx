@@ -437,21 +437,6 @@ const ConsumerDashboard = () => {
               <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Waiting for hardware connection...</p>
             </div>
           )}
-
-          {/* Emergency Trigger Button */}
-          {!emergencyActive && myNodeOnline && (
-            <button 
-              onClick={triggerEmergency}
-              style={{ 
-                width: '100%', marginTop: '1.5rem', padding: '1rem', 
-                background: 'linear-gradient(135deg, #ef4444, #b91c1c)', 
-                color: 'white', border: 'none', borderRadius: 'var(--radius-md)', 
-                fontWeight: 800, cursor: 'pointer', fontSize: '1rem', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
-              }}
-            >
-              🆘 REQUEST EMERGENCY WATER
-            </button>
-          )}
         </section>
 
         <div style={{ height: '2rem' }}></div>

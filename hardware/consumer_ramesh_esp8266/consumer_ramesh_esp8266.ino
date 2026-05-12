@@ -165,9 +165,12 @@ void setup() {
 
 void loop() {
 
-  // 0. Check Physical Emergency Button
+  // 0. Check Physical Emergency Button (with 50ms debounce)
   if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
-    triggerEmergency();
+    delay(50); // Small debounce delay
+    if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
+      triggerEmergency();
+    }
   }
 
   // 1. Check for Reset/Emergency Command (Batch Fetch to reduce blocking)
@@ -196,12 +199,7 @@ void loop() {
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", 0);
       }
 
-      // Check Individual Emergency Trigger
-      json.get(jsonData, "consumer_node/triggerEmergency");
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-        triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
-      }
+      // (Individual Emergency Trigger Removed - Use Physical Button)
     }
     yield();
   }

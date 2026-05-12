@@ -299,13 +299,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
             🚫 Block User
           </button>
         )}
-        <button 
-          onClick={handleEmergencyTrigger}
-          disabled={!online || emergencyActive}
-          style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}
-        >
-          🆘 SOS
-        </button>
+        {/* SOS Trigger Removed - Use Physical Button */}
         <button 
           disabled={!online || (theftFlagged || blocked) && !emergencyActive}
           onClick={onToggleValve} 
