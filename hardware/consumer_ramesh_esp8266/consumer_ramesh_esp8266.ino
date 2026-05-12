@@ -1,7 +1,5 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
 #include <Firebase_ESP_Client.h>
-#include <WiFiUdp.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -16,9 +14,7 @@
 // =========================
 #include "env.h"
 
-FirebaseData fbdo1;
-FirebaseData fbdo2;
-FirebaseData fbdo_cmd;
+FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
@@ -180,8 +176,8 @@ void loop() {
     lastCmdCheck = millis();
     yield(); 
 
-    if (Firebase.RTDB.getJSON(&fbdo_cmd, "commands")) {
-      FirebaseJson &json = fbdo_cmd.jsonObject();
+    if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
+      FirebaseJson &json = fbdo.jsonObject();
       FirebaseJsonData jsonData;
       
       // Check System-wide Reset 
@@ -196,15 +192,15 @@ void loop() {
         emergencyActive = false;
         emergencyValueRemaining = 0;
         // Force update RTDB immediately
-        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/totalLitres", 0);
-        Firebase.RTDB.setFloat(&fbdo_cmd, "sensorData/consumer_node/flowRate", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", 0);
       }
 
       // Check Individual Emergency Trigger
       json.get(jsonData, "consumer_node/triggerEmergency");
       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
         triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo_cmd, "commands/consumer_node/triggerEmergency", false);
+        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
       }
     }
     yield();
@@ -315,12 +311,12 @@ void loop() {
     bool userState = true;
 
     // Read Gov Master Switch
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/gov")) {
-      govState = fbdo1.boolData();
+    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node/gov")) {
+      govState = fbdo.boolData();
     }
     // Read User Switch
-    if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/user")) {
-      userState = fbdo1.boolData();
+    if (Firebase.RTDB.getBool(&fbdo, "valves/consumer_node/user")) {
+      userState = fbdo.boolData();
     }
 
     // Valve logic: Normal status OR Emergency Override
@@ -335,17 +331,14 @@ void loop() {
   // 4. Send Real-time Data
   if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000)) {
     sendFlowPrevMillis = millis();
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate",
-                           flowRate);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres",
-                           totalLitres);
-    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", flowRate);
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", totalLitres);
+    Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/tamperDetected", tamperDetected);
+    Firebase.RTDB.setTimestamp(&fbdo, "sensorData/consumer_node/lastSeen");
 
-    // Emergency Sync
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/emergencyActive",
-                          emergencyActive);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/emergencyValue",
-                           emergencyValueRemaining);
+    // Emergency Status
+    Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/emergencyActive", emergencyActive);
+    Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/emergencyValue", emergencyValueRemaining);
   }
 
   // 5. Heartbeat & Metadata (every 5 seconds)
