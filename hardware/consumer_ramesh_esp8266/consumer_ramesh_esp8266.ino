@@ -10,8 +10,6 @@
 
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-#include <Ticker.h>
-#include <WiFiManager.h>
 #include <Wire.h>
 // =========================
 // NETWORK & FIREBASE CONFIG
@@ -27,22 +25,13 @@ FirebaseConfig config;
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
-Ticker blinker;
-
-void blink() { digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); }
 
 Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX, baseAccelY, baseAccelZ;
 
-// Callback when entering config mode
-void configModeCallback(WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-  blinker.attach(0.2, blink); // Blink fast (200ms) in AP mode
-}
+// (Config mode removed)
 
 // =========================
 // VALVE PIN
@@ -111,16 +100,24 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, HIGH);
-  wifiManager.setAPCallback(configModeCallback);
 
-  Serial.println("Connecting to Wi-Fi...");
-  if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
-    Serial.println("Failed to connect, restarting...");
-    delay(3000);
-    ESP.restart(); // Reset and try again
+  Serial.printf("Connecting to Wi-Fi: %s ", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
+    delay(500);
+    Serial.print(".");
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
   }
 
-  blinker.detach();
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nFailed to connect. Continuing in offline mode...");
+  } else {
+    Serial.println("\nWiFi Connected!");
+    Serial.println(WiFi.localIP());
+  }
+
   digitalWrite(LED_BUILTIN, LOW);
 
   // 2. Initialize Firebase
