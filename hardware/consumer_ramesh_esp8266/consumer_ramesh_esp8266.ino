@@ -182,6 +182,7 @@ void loop() {
     if (Firebase.RTDB.getJSON(&fbdo, "commands")) {
       FirebaseJson &json = fbdo.jsonObject();
       FirebaseJsonData jsonData;
+      bool didReset = false;
       
       // Check System-wide Reset OR Individual Reset
       bool resetReq = false;
@@ -199,17 +200,30 @@ void loop() {
         lastTamperTime = 0;
         emergencyActive = false;
         emergencyValueRemaining = 0;
+        didReset = true;
         // Force update status
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/totalLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/flowRate", 0);
         Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/emergencyActive", false);
+        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/tamperDetected", false);
+        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
       }
 
-      // Check Individual Emergency Trigger (RESTORED)
-      json.get(jsonData, "consumer_node/triggerEmergency");
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-        triggerEmergency();
-        Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
+      // Check Individual Emergency Trigger (SKIP if we just reset)
+      if (!didReset) {
+        json.get(jsonData, "consumer_node/triggerEmergency");
+        if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
+          triggerEmergency();
+          Firebase.RTDB.setBool(&fbdo, "commands/consumer_node/triggerEmergency", false);
+        }
+        // Auto-deactivate emergency when command is cleared from dashboard
+        if (emergencyActive && jsonData.success && jsonData.type == "boolean" && !jsonData.boolValue) {
+          Serial.println("🛑 Emergency deactivated via Firebase command.");
+          emergencyActive = false;
+          emergencyValueRemaining = 0;
+          Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node/emergencyActive", false);
+          Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node/emergencyValue", 0);
+        }
       }
     }
     yield();

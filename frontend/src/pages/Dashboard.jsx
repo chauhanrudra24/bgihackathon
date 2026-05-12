@@ -562,15 +562,11 @@ const Dashboard = () => {
         console.warn("Firestore archive failed, but continuing with reset:", fsErr);
       }
 
-      // 1. Send reset command to each node individually
-      const commandUpdates = {};
-      commandUpdates['commands/consumer_node/reset'] = true;
-      commandUpdates['commands/consumer_node_8266/reset'] = true;
-      commandUpdates['commands/resetAll'] = true; 
-      await update(ref(db), commandUpdates);
-      
-      // 2. Clear all data and SOS status
+      // 1. Build ALL reset updates atomically (including reset commands)
       const updates = {};
+      updates['commands/resetAll'] = true;
+      updates['commands/consumer_node/reset'] = true;
+      updates['commands/consumer_node_8266/reset'] = true;
       updates['sensorData/gov_node/totalLitres'] = 0;
       updates['sensorData/gov_node/flowRate'] = 0;
       updates['sensorData/gov_node/govSupplyLitres'] = 0;
