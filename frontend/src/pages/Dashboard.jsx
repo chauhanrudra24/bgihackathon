@@ -171,7 +171,7 @@ const NodeCard = ({ title, nodeData }) => {
         <FlowMeterCard 
           flowRate={nodeData.flowRate} 
           totalLitres={nodeData.totalLitres} 
-          label="Main Supply Flow (YF-S201)"
+          label="Main Supply Flow"
         />
       </div>
     </div>
@@ -350,13 +350,13 @@ const SettingsView = () => {
               </div>
 
               <div className="input-group">
-                <label>🏗️ Gov Node Calibration (YF-S401)</label>
+                <label>🏗️ Gov Node Calibration</label>
                 <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
                 <small>Standard: 96.0. Calibrated for 6mm ID pipe. System now applies 0.15α smoothing.</small>
               </div>
               
               <div className="input-group">
-                <label>🏠 Consumer Node Calibration (YF-S401)</label>
+                <label>🏠 Consumer Node Calibration</label>
                 <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
                 <small>Standard: 96.0. System automatically adjusts pulse-to-liter integration based on this value.</small>
               </div>

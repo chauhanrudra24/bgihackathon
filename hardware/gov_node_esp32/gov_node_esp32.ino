@@ -45,7 +45,7 @@ unsigned long theftCheckMillis = 0;
 // =========================
 #define TURBIDITY_PIN 33
 #define TDS_PIN 32
-#define FLOW_SENSOR_PIN 27  // YF-S201 Signal Pin
+#define FLOW_SENSOR_PIN 27  // Standard Flow Sensor Signal Pin
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 2
@@ -56,7 +56,7 @@ float turbidityThreshold = 3.15;
 // =========================
 // FLOW SENSOR (YF-S201)
 // =========================
-// YF-S201: ~7.5 pulses per liter per minute (450 pulses/L)
+// Standard Flow Sensor: ~96 pulses per liter per minute
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
 float totalLitres = 0.0;     // Total litres since boot
@@ -151,7 +151,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   lastFlowCalc = millis();
   
-  Serial.println("Flow Sensor (YF-S201) initialized on pin 27");
+  Serial.println("Flow Sensor initialized on pin 27");
   Serial.println("Setup complete!\n");
 }
 
@@ -189,7 +189,7 @@ void loop() {
     
     float elapsedSec = elapsedMs / 1000.0;
     
-    // YF-S201: Flow rate (L/min) = Frequency (Hz) / 7.5
+    // Flow rate (L/min) = Frequency (Hz) / flowCalibration
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / flowCalibration;

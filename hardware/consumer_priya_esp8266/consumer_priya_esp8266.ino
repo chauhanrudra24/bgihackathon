@@ -52,7 +52,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 96.0  // F = 96 * Q (L/min) for YF-S401
+#define FLOW_CALIBRATION 96.0  // F = 96 * Q (L/min)
 
 volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;        // L/min (Smoothed)
