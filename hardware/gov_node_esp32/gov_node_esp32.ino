@@ -205,30 +205,23 @@ void loop() {
     
     float elapsedSec = elapsedMs / 1000.0;
     
-    // Flow rate (L/min) = Frequency (Hz) / flowCalibration
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / flowCalibration;
       
-      if (rawFlow > 80.0) {
-        rawFlow = 0; 
-      }
+      if (rawFlow > 80.0) rawFlow = 0; 
       
-      // Improved Smoothing Filter
       if (pulseCopy == 0) {
-        flowRate = flowRate * 0.7; // Gradual decay when no pulses
+        flowRate = flowRate * 0.7; 
       } else {
-        // Exponential Smoothing (Alpha = 0.3)
         flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
       
-      // Sensitive noise floor
       if (flowRate < 0.05) flowRate = 0;
     } else {
       flowRate = 0;
     }
     
-    // Volume in litres for this interval
     float pulsesPerLitre = flowCalibration * 60.0;
     float litresThisInterval = 0;
     if (pulsesPerLitre > 0) {
@@ -243,24 +236,11 @@ void loop() {
     lastFlowCalc = millis();
   }
 
-  // =========================
-  // SETTINGS SYNC (every 10 seconds)
-  // =========================
-  static unsigned long lastSettingsSync = 0;
-    }
-  }
-
-  // (Consolidated into block above)
-
-  // =========================
-  // THEFT / LEAKAGE CHECK (every 30 seconds)
-  // =========================
+  // 3. Theft / Leakage Check (every 30 seconds)
   if (Firebase.ready() && (millis() - theftCheckMillis > 30000 || theftCheckMillis == 0)) {
     theftCheckMillis = millis();
     
-    // Read total consumer usage from Firebase
     float totalConsumer = 0.0;
-    
     if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/totalLitres"))) {
       totalConsumer += fbdo.floatData();
     }
@@ -270,7 +250,6 @@ void loop() {
     
     consumerTotalLitres = totalConsumer;
     
-    // Read tamper status from consumers
     bool rameshTamper = false;
     bool priyaTamper = false;
     if (Firebase.RTDB.getBool(&fbdo, F("sensorData/consumer_node/tamperDetected"))) {
@@ -280,11 +259,9 @@ void loop() {
       priyaTamper = fbdo.boolData();
     }
 
-    if (rameshTamper) Serial.println("🚨 ALERT: Tamper detected at Ramesh's node!");
-    if (priyaTamper) Serial.println("🚨 ALERT: Tamper detected at Priya's node!");
+    if (rameshTamper) Serial.println(F("🚨 ALERT: Tamper detected at Ramesh's node!"));
+    if (priyaTamper) Serial.println(F("🚨 ALERT: Tamper detected at Priya's node!"));
     
-    // Theft Detection Logic:
-    // If gov supplies significantly more than consumers are receiving
     float difference = govSupplyLitres - consumerTotalLitres;
     float tolerance = govSupplyLitres * 0.15;
     
@@ -299,7 +276,6 @@ void loop() {
       }
     }
 
-    // Timer Logic: Must be SUSPICIOUS/ALERT for > 5 seconds to be "FLAGGED"
     if (currentTheftAssessment != "NORMAL") {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
@@ -309,8 +285,6 @@ void loop() {
             theftStatus = "THEFT FLAGGED";
             Serial.println(F("🚨 THEFT FLAGGED: Persistent discrepancy detected for > 5s!"));
         }
-        
-        // Mark consumers as flagged in their accounts once per alert
         if (!theftFlaggedInSession) {
             theftFlaggedInSession = true;
             Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
@@ -321,19 +295,16 @@ void loop() {
     } else {
       theftAlertStartTime = 0;
       theftStatus = "NORMAL";
-      theftFlaggedInSession = false; // Reset session flag when normal
+      theftFlaggedInSession = false;
     }
     
-    // Upload theft data
     Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), theftStatus);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"), govSupplyLitres);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/consumerTotalLitres"), consumerTotalLitres);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowDifference"), govSupplyLitres - consumerTotalLitres);
   }
 
-  // =========================
-  // SEND FLOW DATA (every 1 second for real-time feel)
-  // =========================
+  // 4. Send Flow Data (every 1 second)
   if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
     sendFlowPrevMillis = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), flowRate);
@@ -341,12 +312,10 @@ void loop() {
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
   }
 
-  // Send other data to Firebase every 5 seconds
-  if (Firebase.ready() &&
-      (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+  // 5. Send sensor data every 5 seconds
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
 
-    // TURBIDITY SENSOR (Averaged over 20 samples to stop random jumping)
     long turbSum = 0;
     for (int i = 0; i < 20; i++) {
       turbSum += analogRead(TURBIDITY_PIN);
@@ -355,88 +324,39 @@ void loop() {
     float turbidityVoltage = (turbSum / 20.0) * (3.3 / 4095.0);
 
     String waterStatus;
-    bool turbConnected = (turbidityVoltage > 0.1); // 0.1V threshold for connection
+    bool turbConnected = (turbidityVoltage > 0.1);
     
-    if (!turbConnected) {
-      waterStatus = "NOT CONNECTED";
-    } else if (turbidityVoltage > turbidityThreshold) {
-      waterStatus = "CLEAR";
-    } else {
-      waterStatus = "DIRTY";
-    }
+    if (!turbConnected) waterStatus = "NOT CONNECTED";
+    else if (turbidityVoltage > turbidityThreshold) waterStatus = "CLEAR";
+    else waterStatus = "DIRTY";
 
-    // TDS SENSOR (Averaged over 20 samples for stability)
     long tdsSum = 0;
     for (int i = 0; i < 20; i++) {
       tdsSum += analogRead(TDS_PIN);
       delay(2);
     }
     float tdsVoltage = (tdsSum / 20.0) * (3.3 / 4095.0);
-    
-    // Convert voltage to ppm (gravity formula)
     float tdsValue = (133.42 * tdsVoltage * tdsVoltage * tdsVoltage -
-                      255.86 * tdsVoltage * tdsVoltage + 857.39 * tdsVoltage) *
-                     0.5;
+                      255.86 * tdsVoltage * tdsVoltage + 857.39 * tdsVoltage) * 0.5;
 
-    bool tdsConnected = (tdsVoltage > 0.1); // 0.1V threshold for connection
-
-    // =========================
-    // FLOW SENSOR CONNECTION CHECK
-    // =========================
+    bool tdsConnected = (tdsVoltage > 0.1);
     bool flowConnected = (totalLitres > 0 || flowRate > 0 || millis() < 60000);
-    // If no flow detected for >60 seconds after boot, mark as not connected
-    // But we also check if flow sensor has ever produced pulses
 
-    // =========================
-    // SEND TO FIREBASE
-    // =========================
-    bool success = true;
-    
-    // Send connection status
     Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), turbConnected);
     Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), tdsConnected);
     Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/flowConnected"), flowConnected);
 
-    if (turbConnected) {
-      Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), turbidityVoltage);
-    }
-    
-    if (tdsConnected) {
-      Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tdsValue);
-    }
+    if (turbConnected) Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), turbidityVoltage);
+    if (tdsConnected) Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tdsValue);
 
     if (!Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), waterStatus)) {
-      success = false;
-      Serial.println(F("Firebase Write Error (status): ") + fbdo.errorReason());
+      Serial.println(F("Firebase Write Error: ") + fbdo.errorReason());
     }
 
-    if (success) {
-      Serial.println("==> Successfully sent to Firebase!");
-    }
-
-    // =========================
-    // PRINT TO SERIAL
-    // =========================
-    Serial.print("Turbidity Voltage: ");
-    Serial.print(turbidityVoltage);
-    Serial.print(" V (");
-    Serial.print(waterStatus);
-    Serial.println(")");
-
-    Serial.print("TDS Value: ");
-    Serial.print(tdsValue);
-    Serial.println(" ppm");
-
-    Serial.print("Flow Rate: ");
-    Serial.print(flowRate);
-    Serial.println(" L/min");
-
-    Serial.print("Total Litres: ");
-    Serial.print(totalLitres);
-    Serial.println(" L");
-
-    Serial.print("Theft Status: ");
-    Serial.println(theftStatus);
-    Serial.println("------------------------");
+    Serial.println(F("------------------------"));
+    Serial.print(F("Turbidity: ")); Serial.print(turbidityVoltage); Serial.print(F("V (")); Serial.print(waterStatus); Serial.println(F(")"));
+    Serial.print(F("TDS: ")); Serial.print(tdsValue); Serial.println(F(" ppm"));
+    Serial.print(F("Flow: ")); Serial.print(flowRate); Serial.println(F(" L/min"));
+    Serial.println(F("------------------------"));
   }
 }
