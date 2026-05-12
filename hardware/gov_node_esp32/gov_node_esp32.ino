@@ -1,5 +1,4 @@
 #include <WiFi.h>
-#include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <Firebase_ESP_Client.h>
@@ -123,12 +122,6 @@ void setup() {
 
   digitalWrite(LED_BUILTIN, HIGH); // LED ON when connected
 
-  // 1.5 Setup OTA
-  ArduinoOTA.setHostname("JalBoard_GovNode");
-  ArduinoOTA.setPassword("prince");
-  ArduinoOTA.begin();
-  Serial.println("OTA Ready");
-
   // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -162,7 +155,6 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
 
   // 1. Check for Commands (Batch Fetch to reduce blocking)
   static unsigned long lastCmdCheck = 0;
