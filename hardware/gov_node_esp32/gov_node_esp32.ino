@@ -1,6 +1,4 @@
 #include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
 #include <Firebase_ESP_Client.h>
 
 // Provide the token generation process info.
@@ -122,6 +120,8 @@ void setup() {
 
   digitalWrite(LED_BUILTIN, HIGH); // LED ON when connected
 
+  // Firebase initialization below...
+
   // 2. Initialize Firebase
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -155,6 +155,7 @@ void setup() {
 }
 
 void loop() {
+  // OTA Handle removed
 
   // 1. Check for Commands (Batch Fetch to reduce blocking)
   static unsigned long lastCmdCheck = 0;
@@ -342,7 +343,8 @@ void loop() {
     if (tdsConnected) Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tdsValue);
 
     if (!Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), waterStatus)) {
-      Serial.println(F("Firebase Write Error: ") + fbdo.errorReason());
+      Serial.print(F("Firebase Write Error: "));
+      Serial.println(fbdo.errorReason().c_str());
     }
 
     Serial.println(F("------------------------"));
