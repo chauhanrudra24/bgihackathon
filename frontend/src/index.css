@@ -206,6 +206,26 @@ h2 {
     color: #475569;
 }
 
+.status-label {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.status-label.theft-flagged {
+    color: var(--danger);
+    font-weight: 800;
+}
+
+.status-label.tamper-alert {
+    color: var(--warning);
+    font-weight: 800;
+}
+
+.status-label.online {
+    color: var(--success);
+}
+
 /* Node Container & Grids */
 .node-container {
     margin-bottom: 2.5rem;
@@ -450,6 +470,10 @@ h2 {
     font-size: 0.8rem;
     font-weight: 600;
     animation: alertPulse 2s ease-in-out infinite;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .tamper-alert span {

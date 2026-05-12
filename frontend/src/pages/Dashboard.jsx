@@ -247,7 +247,17 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
             ₹{balance.toFixed(0)}
           </span>
           <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`}>
-            {online ? (tamper || theftFlagged ? '⚠ ALERT' : '● ONLINE') : `OFFLINE (${nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'})`}
+            {online ? (
+              theftFlagged ? (
+                <span className="status-label theft-flagged">🚩 THEFT FLAGGED</span>
+              ) : tamper ? (
+                <span className="status-label tamper-alert">⚠ TAMPER ALERT</span>
+              ) : (
+                <span className="status-label online">● ONLINE</span>
+              )
+            ) : (
+              `OFFLINE (${nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'})`
+            )}
           </span>
         </div>
       </div>

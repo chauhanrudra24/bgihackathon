@@ -43,6 +43,8 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
 unsigned long theftCheckMillis = 0;
+unsigned long theftAlertStartTime = 0; // Timer for theft flagging
+bool theftFlaggedInSession = false;   // Flag to avoid repeated writes
 
 // =========================
 // SENSOR PINS
@@ -180,6 +182,8 @@ void loop() {
         pulseCount = 0;
         consumerTotalLitres = 0;
         theftStatus = "NORMAL";
+        theftAlertStartTime = 0;
+        theftFlaggedInSession = false;
         // Force update status immediately
         Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/totalLitres"), 0);
         Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), 0);
@@ -281,22 +285,43 @@ void loop() {
     
     // Theft Detection Logic:
     // If gov supplies significantly more than consumers are receiving
-    // Allow 15% tolerance for sensor inaccuracy
     float difference = govSupplyLitres - consumerTotalLitres;
     float tolerance = govSupplyLitres * 0.15;
     
-    if (govSupplyLitres > 2.0) { // Only check if enough water has flowed
+    String currentTheftAssessment = "NORMAL";
+    if (govSupplyLitres > 2.0) { 
       if (difference > tolerance && difference > 1.0) {
         if (difference > govSupplyLitres * 0.30) {
-          theftStatus = "ALERT";
-          Serial.println("🚨 THEFT ALERT: Major discrepancy detected!");
+          currentTheftAssessment = "ALERT";
         } else {
-          theftStatus = "SUSPICIOUS";
-          Serial.println("⚠️ SUSPICIOUS: Minor discrepancy in flow.");
+          currentTheftAssessment = "SUSPICIOUS";
         }
-      } else {
-        theftStatus = "NORMAL";
       }
+    }
+
+    // Timer Logic: Must be SUSPICIOUS/ALERT for > 5 seconds to be "FLAGGED"
+    if (currentTheftAssessment != "NORMAL") {
+      if (theftAlertStartTime == 0) {
+        theftAlertStartTime = millis();
+        Serial.println(F("⚠️ Potential theft detected. Monitoring for 5 seconds..."));
+      } else if (millis() - theftAlertStartTime > 5000) {
+        if (theftStatus != "THEFT FLAGGED") {
+            theftStatus = "THEFT FLAGGED";
+            Serial.println(F("🚨 THEFT FLAGGED: Persistent discrepancy detected for > 5s!"));
+        }
+        
+        // Mark consumers as flagged in their accounts once per alert
+        if (!theftFlaggedInSession) {
+            theftFlaggedInSession = true;
+            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
+            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node_8266/theftFlagged"), true);
+            Serial.println(F("📝 Database updated: Accounts marked as THEFT FLAGGED."));
+        }
+      }
+    } else {
+      theftAlertStartTime = 0;
+      theftStatus = "NORMAL";
+      theftFlaggedInSession = false; // Reset session flag when normal
     }
     
     // Upload theft data
