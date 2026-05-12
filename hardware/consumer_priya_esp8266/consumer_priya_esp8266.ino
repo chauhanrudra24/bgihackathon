@@ -151,8 +151,8 @@ void setup() {
 
 void loop() {
 
-  // 0. Check Physical Emergency Button (Ignore first 5s to prevent boot triggers)
-  if (millis() > 5000 && digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
+  // 0. Check Physical Emergency Button
+  if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
     triggerEmergency();
   }
 
@@ -166,19 +166,24 @@ void loop() {
       FirebaseJson &json = fbdo.jsonObject();
       FirebaseJsonData jsonData;
       
-      // Check System-wide Reset 
+      // Check System-wide Reset OR Individual Reset
+      bool resetReq = false;
       json.get(jsonData, "resetAll");
-      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-        Serial.println("🔄 SYSTEM RESET REQUESTED...");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
+      json.get(jsonData, "consumer_node_8266/reset");
+      if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) resetReq = true;
+
+      if (resetReq) {
+        Serial.println("🔄 RESET REQUESTED...");
         totalLitres = 0;
         flowRate = 0;
         tamperDetected = false;
         lastTamperTime = 0;
         emergencyActive = false;
         emergencySecondsRemaining = 0;
-        // Force update
+        // Force update status
         Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
-        Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
+        Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
       }
 
       // Check Individual Emergency Trigger
@@ -243,20 +248,9 @@ void loop() {
          lastTamperTime = 0;
          // Force update
          Firebase.RTDB.setFloat(&fbdo, "sensorData/consumer_node_8266/totalLitres", 0);
-         Firebase.RTDB.setBool(&fbdo, "commands/resetAll", false);
-         Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
-         
-         // Immediate status sync to clear red alerts
-         Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/emergencyActive", false);
-         Firebase.RTDB.setBool(&fbdo, "sensorData/consumer_node_8266/tamperDetected", false);
        }
 
-       // Check Individual Emergency Trigger (RESTORED)
-       json.get(jsonData, "consumer_node_8266/triggerEmergency");
-       if (jsonData.success && jsonData.type == "boolean" && jsonData.boolValue) {
-          triggerEmergency();
-          Firebase.RTDB.setBool(&fbdo, "commands/consumer_node_8266/triggerEmergency", false);
-       }
+       // (Individual Emergency Removed - Use Physical Button)
     }
 
     // Check Valves

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue, set, update, remove } from 'firebase/database';
+import { ref, onValue, set, remove } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firestore } from '../firebase';
 
@@ -562,10 +562,14 @@ const Dashboard = () => {
         console.warn("Firestore archive failed, but continuing with reset:", fsErr);
       }
 
-      // 1. Send reset command to hardware
-      await set(ref(db, 'commands/resetAll'), true);
+      // 1. Send reset command to each node individually
+      const commandUpdates = {};
+      commandUpdates['commands/consumer_node/reset'] = true;
+      commandUpdates['commands/consumer_node_8266/reset'] = true;
+      commandUpdates['commands/resetAll'] = true; 
+      await update(ref(db), commandUpdates);
       
-      // 2. Clear totals and flow rates in RTDB immediately for snappy UI
+      // 2. Clear all data and SOS status
       const updates = {};
       updates['sensorData/gov_node/totalLitres'] = 0;
       updates['sensorData/gov_node/flowRate'] = 0;
@@ -573,19 +577,18 @@ const Dashboard = () => {
       updates['sensorData/gov_node/consumerTotalLitres'] = 0;
       updates['sensorData/gov_node/flowDifference'] = 0;
       updates['sensorData/gov_node/theftStatus'] = 'NORMAL';
-      updates['sensorData/gov_node/govSupplyLitres'] = 0;
-      updates['sensorData/gov_node/consumerTotalLitres'] = 0;
-      updates['sensorData/gov_node/flowDifference'] = 0;
       
       updates['sensorData/consumer_node/totalLitres'] = 0;
       updates['sensorData/consumer_node/flowRate'] = 0;
       updates['sensorData/consumer_node/emergencyActive'] = false;
       updates['sensorData/consumer_node/emergencyValue'] = 0;
+      updates['sensorData/consumer_node/tamperDetected'] = false;
       
       updates['sensorData/consumer_node_8266/totalLitres'] = 0;
       updates['sensorData/consumer_node_8266/flowRate'] = 0;
       updates['sensorData/consumer_node_8266/emergencyActive'] = false;
       updates['sensorData/consumer_node_8266/emergencyValue'] = 0;
+      updates['sensorData/consumer_node_8266/tamperDetected'] = false;
 
       // 3. Reset Accounts (Balance to 500) and Valves (Unblock everyone)
       for (const node of CONSUMER_NODES) {
@@ -600,13 +603,19 @@ const Dashboard = () => {
         updates[`commands/${nodeId}/triggerEmergency`] = false;
       }
 
-      // Perform all updates in one go (Atomic and Safe)
-      await update(ref(db), updates);
+      // Perform all updates in one go (more efficient)
+      // Note: In Firebase modular SDK, you'd use 'update' but here we can just set them
+      // To keep it simple and consistent with your style, I'll keep individual sets but as a promise array
+      await Promise.all(Object.entries(updates).map(([path, val]) => set(ref(db, path), val)));
 
-      // 4. Turn off reset flag after 3 seconds
+      // 4. Turn off reset flags after 5 seconds to let hardware catch up
       setTimeout(() => {
-        set(ref(db, 'commands/resetAll'), false);
-      }, 3000);
+        const clearCommands = {};
+        clearCommands['commands/consumer_node/reset'] = false;
+        clearCommands['commands/consumer_node_8266/reset'] = false;
+        clearCommands['commands/resetAll'] = false;
+        update(ref(db), clearCommands);
+      }, 5000);
 
       alert("✅ Reset command sent. System starting fresh!");
     } catch (err) {

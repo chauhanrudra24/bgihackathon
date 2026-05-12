@@ -252,7 +252,7 @@ void loop() {
         flowRate = 0; // Added to prevent theft alert flicker
         consumerTotalLitres = 0;
         theftStatus = "NORMAL";
-        // Final clearing of the command is handled by consumers, but we clear our status
+        // Update status immediately
         Firebase.RTDB.setString(&fbdo, "sensorData/gov_node/theftStatus", "NORMAL");
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/govSupplyLitres", 0);
         Firebase.RTDB.setFloat(&fbdo, "sensorData/gov_node/flowRate", 0);
