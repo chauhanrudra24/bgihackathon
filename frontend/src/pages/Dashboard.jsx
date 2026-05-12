@@ -245,7 +245,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
         </div>
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Total Usage</span>
-          <span className="consumer-flow-value">{(nodeData?.totalLitres || 0).toFixed(3)} <small>L</small></span>
+          <span className="consumer-flow-value">{nodeData?.totalLitres !== undefined ? nodeData.totalLitres.toFixed(3) : 'N/A'} <small>L</small></span>
         </div>
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Valve</span>
@@ -395,8 +395,8 @@ const SettingsView = () => {
 // MAIN DASHBOARD
 // =========================
 const CONSUMER_NODES = [
-  { nodeId: 'consumer_node', name: 'Ramesh Kumar', location: 'Umaria, near BGI' },
-  { nodeId: 'consumer_node_8266', name: 'Priya Patel', location: 'Pigdamber, near BGI' },
+  { nodeId: 'consumer_node', name: 'Ramesh Kumar', location: 'Umaria, near BGI', hasSensor: true },
+  { nodeId: 'consumer_node_8266', name: 'Priya Patel', location: 'Pigdamber, near BGI', hasSensor: false },
 ];
 
 const Dashboard = () => {
@@ -455,7 +455,8 @@ const Dashboard = () => {
     const govOnline = isNodeOnline(govNode);
     // If gov supply is active (>2L/min), consumer is online, valve is open, but consumer flow is zero → flag
     if (govOnline && govNode.flowRate > 2.0) {
-      CONSUMER_NODES.forEach(({ nodeId }) => {
+      CONSUMER_NODES.forEach(({ nodeId, hasSensor }) => {
+        if (!hasSensor) return; // Skip theft check for nodes without flow sensors
         const consumerData = data[nodeId];
         const consumerOnline = isNodeOnline(consumerData);
         const valve = valves[nodeId];

@@ -26,7 +26,7 @@ const Login = () => {
       localStorage.setItem('token', 'mock-token-ramesh');
       navigate('/consumer/consumer_node');
     } else if ((email === 'priya@gmail.com' || email === 'priya@gov.in') && password === 'priya123') {
-      const userData = { email, role: 'consumer', name: 'Priya Patel', nodeId: 'consumer_node_8266' };
+      const userData = { email, role: 'consumer', name: 'Priya Patel', nodeId: 'consumer_node_8266', hasSensor: false };
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('token', 'mock-token-priya');
       navigate('/consumer/consumer_node_8266');

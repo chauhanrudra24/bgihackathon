@@ -25,7 +25,6 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 unsigned long sendDataPrevMillis = 0;
-unsigned long sendFlowPrevMillis = 0;
 unsigned long lastValveCheckMillis = 0;
 Ticker blinker;
 
@@ -53,41 +52,15 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 #define RELAY_ON LOW   
 #define RELAY_OFF HIGH 
 
-// =========================
-// FLOW SENSOR (1/8 inch)
-// =========================
-#define FLOW_SENSOR_PIN D5  // Matches standardized wiring (Pin D5 / GPIO 14)
-
-// Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
-#define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 98.0  // F = 98 * Q (L/min) -> 5880 pulses/L
-
-volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min (Smoothed)
-float totalLitres = 0.0;     // Total litres since boot
-unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // Default for small G1/8
-
-// Tamper detection - if valve is CLOSED but flow is detected
+// Tamper detection
 bool tamperDetected = false;
 bool currentValveState = false;
-
-// ISR for flow sensor
-volatile unsigned long lastPulseTime = 0;
-void ICACHE_RAM_ATTR flowPulseISR() {
-  unsigned long now = micros();
-  // Small sensors can pulse faster. 500us allows up to 2kHz which is plenty.
-  if (now - lastPulseTime > 500) {
-    pulseCount++;
-    lastPulseTime = now;
-  }
-}
 
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\n\n====================================");
-  Serial.println("Consumer Priya Node Starting...");
+  Serial.println("Consumer Priya Node (Valve Only) Starting...");
   Serial.println("====================================\n");
   
   // 1. Connect to WiFi using WiFiManager
@@ -101,14 +74,12 @@ void setup() {
   wifiManager.setAPCallback(configModeCallback);
 
   Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Priya_AP"
   if (!wifiManager.autoConnect("Consumer_Priya_AP")) {
     Serial.println("Failed to connect, restarting...");
     delay(3000);
-    ESP.restart(); // Reset and try again
+    ESP.restart();
   }
 
-  // Once connected, stop blinking and keep LED ON (LOW = ON for ESP8266)
   blinker.detach();
   digitalWrite(LED_BUILTIN, LOW); 
 
@@ -122,7 +93,6 @@ void setup() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
 
-  // Sign up (Anonymous Authentication)
   if (Firebase.signUp(&config, &auth, "", "")) {
     Serial.println("Firebase sign up OK");
   }
@@ -135,17 +105,10 @@ void setup() {
   Firebase.reconnectWiFi(true);
   
   // 3. Setup Valve Relay
-  pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN); // Using Open-Drain for 5V relays
-  digitalWrite(RELAY_PIN, RELAY_OFF); // Default OFF
+  pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN);
+  digitalWrite(RELAY_PIN, RELAY_OFF);
 
-  // 4. Setup Flow Sensor
-  pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
-  lastFlowCalc = millis();
-
-  Serial.println("Flow Sensor (1/8 inch) initialized on D5");
-
-  // 5. Initialize MPU6050
+  // 4. Initialize MPU6050
   Wire.begin(D2, D1); // SDA, SCL
   if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050 chip");
@@ -157,7 +120,6 @@ void setup() {
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
     mpuInitialized = true;
     
-    // Get initial readings
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
     baseAccelX = a.acceleration.x;
@@ -171,181 +133,77 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  // 1. Check for Reset Command FIRST (most critical)
+  // 1. Check for Reset Command (Only for tamper alert clearing in this node)
   static unsigned long lastResetCheck = 0;
-  if (Firebase.ready() && (millis() - lastResetCheck > 800)) {
+  if (Firebase.ready() && (millis() - lastResetCheck > 2000)) {
     lastResetCheck = millis();
     if (Firebase.RTDB.getBool(&fbdo1, "commands/resetAll")) {
       if (fbdo1.boolData()) {
-        Serial.println("🔄 SYSTEM RESET REQUESTED...");
-        totalLitres = 0;
-        flowRate = 0;
-        pulseCount = 0;
-        // Force update RTDB immediately
-        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/totalLitres", 0);
-        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node_8266/flowRate", 0);
+        Serial.println("🔄 RESET REQUESTED...");
+        lastTamperTime = 0;
+        tamperDetected = false;
       }
     }
   }
 
-  // 2. Regular flow calculations
-  if (millis() - lastFlowCalc >= 1000) {
-    unsigned long pulseCopy;
-    unsigned long elapsedMs = millis() - lastFlowCalc;
-    
-    noInterrupts();
-    pulseCopy = pulseCount;
-    pulseCount = 0;
-    interrupts();
-    
-    float elapsedSec = elapsedMs / 1000.0;
-    
-    // Flow rate (L/min) = Frequency (Hz) / flowCalibration
-    if (elapsedSec > 0) {
-      float hz = pulseCopy / elapsedSec;
-      float rawFlow = hz / flowCalibration;
-      
-      // Noise Filter for small sensor
-      if (rawFlow > 40.0) {
-        rawFlow = 0;
-      }
-      
-      // Improved Smoothing Filter
-      if (pulseCopy == 0) {
-        flowRate = flowRate * 0.7; // Gradual decay when no pulses
-      } else {
-        // Exponential Smoothing (Alpha = 0.3)
-        flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
-      }
-      
-      // High-sensitivity noise floor for 1/8" sensor
-      if (flowRate < 0.01) flowRate = 0;
-    } else {
-      flowRate = 0;
-    }
-    
-    // Volume in litres for this interval
-    // Dynamic calculation: pulses per litre = flowCalibration * 60
-    float pulsesPerLitre = flowCalibration * 60.0;
-    float litresThisInterval = 0;
-    if (pulsesPerLitre > 0) {
-      litresThisInterval = (float)pulseCopy / pulsesPerLitre;
-    }
-    
-    if (litresThisInterval > 0) {
-      totalLitres += litresThisInterval;
-    }
-    
-    // =========================
-    // TAMPER / BYPASS DETECTION
-    // =========================
-    bool flowTamper = false;
-    bool motionTamper = false;
+  // 2. Tamper (Motion) detection
+  static unsigned long lastMPUCheck = 0;
+  if (mpuInitialized && (millis() - lastMPUCheck > 500)) {
+    lastMPUCheck = millis();
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
 
-    // 1. Flow detection while valve is CLOSED
-    if (!currentValveState && flowRate > 0.3) { // Lower threshold for small sensor
-      flowTamper = true;
-      Serial.println("🚨 TAMPER ALERT: Flow detected while valve is CLOSED!");
+    float diffX = abs(a.acceleration.x - baseAccelX);
+    float diffY = abs(a.acceleration.y - baseAccelY);
+    float diffZ = abs(a.acceleration.z - baseAccelZ);
+    
+    if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
+      tamperDetected = true;
+      lastTamperTime = millis();
+      Serial.println("🚨 TAMPER ALERT: Motion detected!");
     }
 
-    // 2. Motion / Shaking detection
-    if (mpuInitialized) {
-      sensors_event_t a, g, temp;
-      mpu.getEvent(&a, &g, &temp);
-
-      // Calculate magnitude of acceleration change
-      float diffX = abs(a.acceleration.x - baseAccelX);
-      float diffY = abs(a.acceleration.y - baseAccelY);
-      float diffZ = abs(a.acceleration.z - baseAccelZ);
-      
-      // If deviation is more than 3.5 m/s^2, consider it a shake
-      if (diffX > 3.5 || diffY > 3.5 || diffZ > 3.5) {
-        motionTamper = true;
-        lastTamperTime = millis();
-        Serial.println("🚨 TAMPER ALERT: Motion/Shaking detected!");
-      }
-
-      // Keep alert active for 30 seconds after motion
-      if (millis() - lastTamperTime < 30000) {
-        motionTamper = true;
-      }
-      
-      // Update baseline slowly to account for slow tilts (drift)
-      baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
-      baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
-      baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
+    if (lastTamperTime > 0 && millis() - lastTamperTime > 30000) {
+      tamperDetected = false;
+      lastTamperTime = 0;
     }
-
-    tamperDetected = flowTamper || motionTamper;
     
-    lastFlowCalc = millis();
+    baseAccelX = baseAccelX * 0.9 + a.acceleration.x * 0.1;
+    baseAccelY = baseAccelY * 0.9 + a.acceleration.y * 0.1;
+    baseAccelZ = baseAccelZ * 0.9 + a.acceleration.z * 0.1;
   }
 
-  // =========================
-  // SETTINGS SYNC (every 10 seconds)
-  // =========================
-  static unsigned long lastSettingsSync = 0;
-  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
-    lastSettingsSync = millis();
-    if (Firebase.RTDB.getFloat(&fbdo1, "settings/consumerCalibration")) {
-      float newVal = fbdo1.floatData();
-      if (newVal > 10.0 && newVal < 1000.0) {
-        flowCalibration = newVal;
-      }
-    }
-  }
-
-  // Check Valve Status every 1 second
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
+  // 3. Check Valve Status every 1 second
+  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000)) {
     lastValveCheckMillis = millis();
     
     bool govState = true;
     bool userState = true;
     
-    // Read Gov Master Switch
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/gov")) {
       govState = fbdo1.boolData();
     }
-    
-    // Read User Switch
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node_8266/user")) {
       userState = fbdo1.boolData();
     }
     
     currentValveState = govState && userState;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-    
-    Serial.printf("Valve: [Gov: %s | User: %s] -> Final: %s\n", 
-                  govState ? "ON" : "OFF", 
-                  userState ? "ON" : "OFF", 
-                  currentValveState ? "OPEN" : "CLOSED");
   }
 
-  // =========================
-  // SEND FLOW DATA (every 1 second for real-time feel)
-  // =========================
-  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
-    sendFlowPrevMillis = millis();
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/totalLitres", totalLitres);
-    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen");
-  }
-
-  // Send other data to Firebase every 5 seconds (5000 milliseconds)
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+  // 4. Send Heartbeat & Status every 5 seconds
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
     sendDataPrevMillis = millis();
     
-    // Using Priya's path: "sensorData/consumer_node_8266/"
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/tamperDetected", tamperDetected);
     Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node_8266/valveState", currentValveState);
+    Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node_8266/lastSeen");
     
-    Serial.print("Flow Rate: ");
-    Serial.print(flowRate);
-    Serial.print(" L/min | Total: ");
-    Serial.print(totalLitres);
-    Serial.print(" L | Tamper: ");
-    Serial.println(tamperDetected ? "YES" : "No");
-    Serial.println("Heartbeat sent to Firebase.");
-    Serial.println("------------------------");
+    // Explicitly set flowRate to 0 since sensor is removed
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node_8266/flowRate", 0);
+    
+    Serial.printf("Status Sent | Valve: %s | Tamper: %s\n", 
+                  currentValveState ? "OPEN" : "CLOSED", 
+                  tamperDetected ? "YES" : "No");
   }
 }

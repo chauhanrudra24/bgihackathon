@@ -276,7 +276,7 @@ const ConsumerDashboard = () => {
             <h3>💳 Prepaid Water Balance</h3>
             <div className="balance-value">₹{balance.toFixed(2)}</div>
             <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
-              Rate: ₹{ratePerLitre}/litre | Usage: {(myNodeData?.totalLitres || 0).toFixed(1)}L
+              Rate: ₹{ratePerLitre}/litre {user.hasSensor !== false && `| Usage: ${(myNodeData?.totalLitres || 0).toFixed(1)}L`}
             </p>
           </div>
           <button className="recharge-btn" onClick={() => setShowRechargeModal(true)}>
@@ -367,34 +367,38 @@ const ConsumerDashboard = () => {
           {/* Flow Data Cards */}
           {myNodeOnline ? (
             <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-              <div className="card">
-                <h3>Current Flow</h3>
-                <div className="value" style={{ fontSize: '1.8rem' }}>
-                  {(myNodeData?.flowRate || 0).toFixed(1)}
-                  <span className="unit">L/min</span>
-                </div>
-                {myNodeData?.flowRate > 0 && (
-                  <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
-                    <span className="flow-dot"></span> Flowing
+              {user.hasSensor !== false && (
+                <>
+                  <div className="card">
+                    <h3>Current Flow</h3>
+                    <div className="value" style={{ fontSize: '1.8rem' }}>
+                      {(myNodeData?.flowRate || 0).toFixed(1)}
+                      <span className="unit">L/min</span>
+                    </div>
+                    {myNodeData?.flowRate > 0 && (
+                      <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
+                        <span className="flow-dot"></span> Flowing
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="card">
-                <h3>Total Usage</h3>
-                <div className="value" style={{ fontSize: '1.8rem' }}>
-                  {(myNodeData?.totalLitres || 0).toFixed(1)}
-                  <span className="unit">L</span>
-                </div>
-                <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
-              </div>
+                  <div className="card">
+                    <h3>Total Usage</h3>
+                    <div className="value" style={{ fontSize: '1.8rem' }}>
+                      {(myNodeData?.totalLitres || 0).toFixed(1)}
+                      <span className="unit">L</span>
+                    </div>
+                    <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
+                  </div>
+                </>
+              )}
 
               <div className="card">
                 <h3>Est. Cost</h3>
                 <div className="value" style={{ fontSize: '1.8rem' }}>
                   ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
                 </div>
-                <div className="status" style={{ fontSize: '0.6rem' }}>THIS SESSION</div>
+                <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
               </div>
             </div>
           ) : (
