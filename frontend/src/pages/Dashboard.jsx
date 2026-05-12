@@ -68,7 +68,7 @@ const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
 const NodeCard = ({ title, nodeData }) => {
   const online = isNodeOnline(nodeData);
 
-  if (!online) {
+  if (!nodeData || !online) {
     return (
       <div className="node-container">
         <h2>{title}</h2>

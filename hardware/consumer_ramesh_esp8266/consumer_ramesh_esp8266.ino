@@ -1,8 +1,8 @@
+#include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 #include <Firebase_ESP_Client.h>
+#include <WiFiUdp.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -27,22 +27,22 @@ unsigned long lastValveCheckMillis = 0;
 // =========================
 // VALVE PIN
 // =========================
-#define RELAY_PIN D2 // Relay for Solenoid Valve
+#define RELAY_PIN D1   // Relay for Solenoid Valve
 #define RELAY_ON LOW   // Change to HIGH if your relay is Active-HIGH
 #define RELAY_OFF HIGH // Change to LOW if your relay is Active-HIGH
 
 // =========================
 // FLOW SENSOR (1/8 inch)
 // =========================
-#define FLOW_SENSOR_PIN D5  // 1/8" Flow Sensor Signal Pin
+#define FLOW_SENSOR_PIN D2 // 1/8" Flow Sensor Signal Pin
 
 // Calibrated for 6mm Inner Diameter pipe (Standard for YF-S401 / small G1/8)
 #define PULSES_PER_LITRE 5880.0
-#define FLOW_CALIBRATION 98.0  // F = 98 * Q (L/min)
+#define FLOW_CALIBRATION 98.0 // F = 98 * Q (L/min)
 
 volatile unsigned long pulseCount = 0;
-float flowRate = 0.0;        // L/min (Smoothed)
-float totalLitres = 0.0;     // Total litres since boot
+float flowRate = 0.0;    // L/min (Smoothed)
+float totalLitres = 0.0; // Total litres since boot
 unsigned long lastFlowCalc = 0;
 float flowCalibration = 98.0; // Default for small G1/8
 
@@ -67,16 +67,18 @@ void setup() {
   Serial.println("\n\n====================================");
   Serial.println("Consumer Ramesh Node Starting...");
   Serial.println("====================================\n");
-  
+
   // 1. Connect to WiFi using WiFiManager
   WiFi.mode(WIFI_STA);
   WiFiManager wifiManager;
-  
+
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
+  digitalWrite(LED_BUILTIN,
+               HIGH); // ESP8266 LED is Active LOW, so HIGH means OFF
 
   Serial.println("Connecting to Wi-Fi...");
-  // Connects to saved Wi-Fi or sets up an Access Point named "Consumer_Ramesh_AP"
+  // Connects to saved Wi-Fi or sets up an Access Point named
+  // "Consumer_Ramesh_AP"
   if (!wifiManager.autoConnect("Consumer_Ramesh_AP")) {
     Serial.println("Failed to connect, restarting...");
     delay(3000);
@@ -103,18 +105,18 @@ void setup() {
   // Sign up (Anonymous Authentication)
   if (Firebase.signUp(&config, &auth, "", "")) {
     Serial.println("Firebase sign up OK");
-  }
-  else {
-    Serial.printf("Firebase sign up failed: %s\n", config.signer.signupError.message.c_str());
+  } else {
+    Serial.printf("Firebase sign up failed: %s\n",
+                  config.signer.signupError.message.c_str());
   }
 
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-  
+
   // 3. Setup Valve Relay
   pinMode(RELAY_PIN, OUTPUT_OPEN_DRAIN); // Using Open-Drain for 5V relays
-  digitalWrite(RELAY_PIN, RELAY_OFF); // Default OFF
+  digitalWrite(RELAY_PIN, RELAY_OFF);    // Default OFF
 
   // 4. Setup Flow Sensor
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
@@ -139,7 +141,8 @@ void loop() {
         flowRate = 0;
         pulseCount = 0;
         // Force update RTDB immediately
-        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/totalLitres", 0);
+        Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/totalLitres",
+                               0);
         Firebase.RTDB.setFloat(&fbdo1, "sensorData/consumer_node/flowRate", 0);
       }
     }
@@ -149,24 +152,24 @@ void loop() {
   if (millis() - lastFlowCalc >= 1000) {
     unsigned long pulseCopy;
     unsigned long elapsedMs = millis() - lastFlowCalc;
-    
+
     noInterrupts();
     pulseCopy = pulseCount;
     pulseCount = 0;
     interrupts();
-    
+
     float elapsedSec = elapsedMs / 1000.0;
-    
+
     // Flow rate (L/min) = Frequency (Hz) / flowCalibration
     if (elapsedSec > 0) {
       float hz = pulseCopy / elapsedSec;
       float rawFlow = hz / flowCalibration;
-      
+
       // Noise Filter for small sensor
       if (rawFlow > 40.0) {
         rawFlow = 0;
       }
-      
+
       // Improved Smoothing Filter
       if (pulseCopy == 0) {
         flowRate = flowRate * 0.7; // Gradual decay when no pulses
@@ -174,13 +177,14 @@ void loop() {
         // Exponential Smoothing (Alpha = 0.3)
         flowRate = (flowRate * 0.7) + (rawFlow * 0.3);
       }
-      
+
       // High-sensitivity noise floor for 1/8" sensor
-      if (flowRate < 0.01) flowRate = 0;
+      if (flowRate < 0.01)
+        flowRate = 0;
     } else {
       flowRate = 0;
     }
-    
+
     // Volume in litres for this interval
     // Dynamic calculation: pulses per litre = flowCalibration * 60
     float pulsesPerLitre = flowCalibration * 60.0;
@@ -188,11 +192,11 @@ void loop() {
     if (pulsesPerLitre > 0) {
       litresThisInterval = (float)pulseCopy / pulsesPerLitre;
     }
-    
+
     if (litresThisInterval > 0) {
       totalLitres += litresThisInterval;
     }
-    
+
     // =========================
     // TAMPER / BYPASS DETECTION
     // =========================
@@ -203,7 +207,7 @@ void loop() {
     } else if (currentValveState || flowRate < 0.1) {
       tamperDetected = false;
     }
-    
+
     lastFlowCalc = millis();
   }
 
@@ -211,7 +215,8 @@ void loop() {
   // SETTINGS SYNC (every 10 seconds)
   // =========================
   static unsigned long lastSettingsSync = 0;
-  if (Firebase.ready() && (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
+  if (Firebase.ready() &&
+      (millis() - lastSettingsSync > 10000 || lastSettingsSync == 0)) {
     lastSettingsSync = millis();
     if (Firebase.RTDB.getFloat(&fbdo1, "settings/consumerCalibration")) {
       float newVal = fbdo1.floatData();
@@ -222,49 +227,55 @@ void loop() {
   }
 
   // Check Valve Status every 1 second
-  if (Firebase.ready() && (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
+  if (Firebase.ready() &&
+      (millis() - lastValveCheckMillis > 1000 || lastValveCheckMillis == 0)) {
     lastValveCheckMillis = millis();
-    
+
     bool govState = true;
     bool userState = true;
-    
+
     // Read Gov Master Switch
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/gov")) {
       govState = fbdo1.boolData();
     }
-    
+
     // Read User Switch
     if (Firebase.RTDB.getBool(&fbdo1, "valves/consumer_node/user")) {
       userState = fbdo1.boolData();
     }
-    
+
     currentValveState = govState && userState;
     digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-    
-    Serial.printf("Valve: [Gov: %s | User: %s] -> Final: %s\n", 
-                  govState ? "ON" : "OFF", 
-                  userState ? "ON" : "OFF", 
+
+    Serial.printf("Valve: [Gov: %s | User: %s] -> Final: %s\n",
+                  govState ? "ON" : "OFF", userState ? "ON" : "OFF",
                   currentValveState ? "OPEN" : "CLOSED");
   }
 
   // =========================
   // SEND FLOW DATA (every 1 second for real-time feel)
   // =========================
-  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
+  if (Firebase.ready() &&
+      (millis() - sendFlowPrevMillis > 1000 || sendFlowPrevMillis == 0)) {
     sendFlowPrevMillis = millis();
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate", flowRate);
-    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres", totalLitres);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/flowRate",
+                           flowRate);
+    Firebase.RTDB.setFloat(&fbdo2, "sensorData/consumer_node/totalLitres",
+                           totalLitres);
     Firebase.RTDB.setTimestamp(&fbdo2, "sensorData/consumer_node/lastSeen");
   }
 
   // Send other data to Firebase every 5 seconds (5000 milliseconds)
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
+  if (Firebase.ready() &&
+      (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
     sendDataPrevMillis = millis();
-    
+
     // Using Ramesh's path: "sensorData/consumer_node/"
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected", tamperDetected);
-    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState", currentValveState);
-    
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/tamperDetected",
+                          tamperDetected);
+    Firebase.RTDB.setBool(&fbdo2, "sensorData/consumer_node/valveState",
+                          currentValveState);
+
     Serial.print("Flow Rate: ");
     Serial.print(flowRate);
     Serial.print(" L/min | Total: ");

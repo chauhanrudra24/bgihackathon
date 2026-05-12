@@ -164,8 +164,7 @@ const ConsumerDashboard = () => {
   // Water quality from gov node
   const renderQualityCard = (sensorData, title) => {
     const online = isNodeOnline(sensorData?.lastSeen);
-
-    if (!online) {
+    if (!sensorData || !online) {
       return (
         <div className="node-container">
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem', gap: '10px' }}>
