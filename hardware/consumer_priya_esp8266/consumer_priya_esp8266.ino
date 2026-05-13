@@ -57,7 +57,7 @@ unsigned long lastValveActionTime = 0;
 volatile bool physicalEmergencyRequested = false;
 void ICACHE_RAM_ATTR buttonISR() {
   static unsigned long lastBtn = 0;
-  if (millis() - lastBtn > 300) {
+  if (millis() - lastBtn > 500) { // Increased debounce to 500ms
     physicalEmergencyRequested = true;
     lastBtn = millis();
   }
