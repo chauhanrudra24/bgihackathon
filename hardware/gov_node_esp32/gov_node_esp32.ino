@@ -4,7 +4,6 @@
 #include "addons/RTDBHelper.h"
 #include <WiFiManager.h>
 #include <Ticker.h>
-#include <esp_task_wdt.h>
 #include "env.h"
 
 // ========================= FIREBASE =========================
@@ -100,15 +99,6 @@ void setup() {
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   lastFlowCalc = millis();
-  
-  // Enable Task Watchdog (10 seconds)
-  esp_task_wdt_config_t twdt_config = {
-      .timeout_ms = 10000,
-      .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
-      .trigger_panic = true,
-  };
-  esp_task_wdt_init(&twdt_config);
-  esp_task_wdt_add(NULL);
 
   Serial.println(F("Gov Node Ready"));
 }
@@ -121,7 +111,6 @@ void loop() {
     Serial.println("WiFi Lost. Reconnecting...");
     WiFi.reconnect();
   }
-  esp_task_wdt_reset(); // Feed watchdog
 
   // ---- 1. COMMAND SYNC ----
   if (Firebase.ready() && (millis() - lastCmdCheck > 1500)) {
@@ -162,11 +151,13 @@ void loop() {
   if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    // Fetch real-time Ramesh flow
+    // Fetch real-time Ramesh flow (non-blocking yield)
     float rameshFlow = 0.0;
+    yield();
     if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/flowRate"))) {
       rameshFlow = fbdo.floatData();
     }
+    yield();
     
     // Check tamper flags
     bool rTamper = false;

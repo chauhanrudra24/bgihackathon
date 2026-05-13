@@ -121,8 +121,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
   lastFlowCalc = millis();
-
-  ESP.wdtEnable(WDTO_8S); // Enable hardware watchdog (8 seconds)
   
   // MPU6050
   Wire.begin(D2, D1);
@@ -152,7 +150,6 @@ void loop() {
     physicalEmergencyRequested = false;
     toggleEmergency("PHYSICAL_BUTTON");
   }
-  ESP.wdtFeed(); // Kick the dog
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {

@@ -127,7 +127,6 @@ void setup() {
   currentValveState = true; // DEFAULT ON
   digitalWrite(RELAY_PIN, RELAY_ON);
   attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
-  ESP.wdtEnable(WDTO_8S); // Enable hardware watchdog
 
   // MPU6050
   Wire.begin(D2, D1);
@@ -157,7 +156,6 @@ void loop() {
     physicalEmergencyRequested = false;
     toggleEmergency("PHYSICAL_BUTTON");
   }
-  ESP.wdtFeed(); // Kick dog
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
