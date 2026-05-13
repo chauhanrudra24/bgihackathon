@@ -216,7 +216,7 @@ void loop() {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 10000) { 
+      } else if (millis() - theftAlertStartTime > 5000) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
           

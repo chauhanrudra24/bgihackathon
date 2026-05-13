@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ref, onValue, set, remove, update } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -690,32 +690,44 @@ const Dashboard = () => {
   }, [alertLogs.length]);
 
 
-  // ===== AUTO THEFT DETECTION =====
-  // If gov supply is active (flowRate > 0) but a consumer's valve is open and their flow is 0, flag as suspicious
+  // ===== AUTO THEFT DETECTION (with 5s persistence) =====
+  const theftStartTimes = useRef({});
   useEffect(() => {
-    if (!data || commands.resetAll) return; // SKIP THEFT CHECK DURING RESET
+    if (!data || commands.resetAll) return;
     const govNode = data.gov_node;
-    const govOnline = isNodeOnline(govNode);
-    // If gov supply is active (>2L/min), consumer is online, valve is open, but consumer flow is zero → flag
-    if (govOnline && govNode.flowRate > 2.0) {
-      CONSUMER_NODES.forEach(({ nodeId, hasSensor }) => {
-        if (!hasSensor) return; // Skip theft check for nodes without flow sensors
-        const consumerData = data[nodeId];
-        const consumerOnline = isNodeOnline(consumerData);
-        const valve = valves[nodeId];
-        const valveOpen = valve?.gov !== false && valve?.user !== false;
-        const consumerFlow = consumerData?.flowRate ?? 0;
-        const account = accounts[nodeId] || {};
-
-        if (consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged) {
-          set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
-          set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>2L/min) but no consumer flow detected');
-          set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
-          // Auto-block the consumer valve
-          set(ref(db, `valves/${nodeId}/gov`), false);
-        }
-      });
+    if (!isNodeOnline(govNode) || govNode.flowRate <= 2.0) {
+      theftStartTimes.current = {}; // Reset all timers if gov flow stops
+      return;
     }
+
+    CONSUMER_NODES.forEach(({ nodeId, hasSensor }) => {
+      if (!hasSensor) return;
+      const consumerData = data[nodeId];
+      const consumerOnline = isNodeOnline(consumerData);
+      const valve = valves[nodeId];
+      const valveOpen = valve?.gov !== false && valve?.user !== false;
+      const consumerFlow = consumerData?.flowRate ?? 0;
+      const account = accounts[nodeId] || {};
+
+      const isSuspicious = consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged;
+
+      if (isSuspicious) {
+        if (!theftStartTimes.current[nodeId]) {
+          theftStartTimes.current[nodeId] = Date.now();
+        } else {
+          const duration = (Date.now() - theftStartTimes.current[nodeId]) / 1000;
+          if (duration >= 5) {
+            set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
+            set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>2L/min) but no consumer flow detected (5s persistence)');
+            set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
+            set(ref(db, `valves/${nodeId}/gov`), false);
+            delete theftStartTimes.current[nodeId]; // Clear after triggering
+          }
+        }
+      } else {
+        delete theftStartTimes.current[nodeId]; // Reset if condition cleared
+      }
+    });
   }, [data, valves, accounts]);
 
   // ===== AUTO BALANCE CHECK =====
