@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ref, onValue, set, remove, update } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -280,7 +280,7 @@ const NodeCard = ({ title, nodeData }) => {
 // CONSUMER VALVE + FLOW CARD
 // =========================
 // Memoized to prevent full-page re-render flicker during WebSocket heartbeats
-const ConsumerCard = React.memo(({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
+const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
