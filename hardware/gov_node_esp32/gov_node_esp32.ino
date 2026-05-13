@@ -82,15 +82,18 @@ void setup() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   
-  // Restore signUp to fix the -127 "missing credentials" error.
-  // Using "" for anonymous login. Ensure Anonymous Auth is enabled in Firebase Console.
-  Firebase.signUp(&config, &auth, "", "");
-  
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Serial.println("Sign-up Success");
+  } else {
+    Serial.printf("Sign-up Fail: %s\n", config.signer.signupError.message.c_str());
+  }
+
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-  fbdo.setResponseSize(2048);
-  fbdo.setBSSLBufferSize(2048, 1024);
+  
+  fbdo.setResponseSize(1024);
+  fbdo.setBSSLBufferSize(1024, 512); // Standard buffers like consumer node
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
