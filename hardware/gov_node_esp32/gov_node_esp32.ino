@@ -95,6 +95,16 @@ void setup() {
   fbdo.setResponseSize(2048); // Increased for ESP32 stability
   fbdo.setBSSLBufferSize(2048, 1024); 
 
+  // ---- Data Recovery ----
+  if (Firebase.ready()) {
+    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"))) {
+      govSupplyLitres = fbdo.floatData();
+      Serial.printf("Recovered System Supply: %.2f L\n", govSupplyLitres);
+    }
+  }
+
+  Serial.printf("Setup OK | Heap: %d\n", ESP.getFreeHeap());
+
   analogSetAttenuation(ADC_11db);
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
@@ -139,8 +149,13 @@ void loop() {
     if (sec > 0) {
       float hz = pc / sec;
       float raw = hz / flowCalibration;
-      flowRate = (pc == 0) ? flowRate * 0.7 : (flowRate * 0.7 + raw * 0.3);
-      if (flowRate < 0.05) flowRate = 0;
+      // Sticky Filter: Slower decay to prevent flickering to 0
+      if (pc > 0) {
+        flowRate = flowRate * 0.5 + raw * 0.5;
+      } else {
+        flowRate = flowRate * 0.8; 
+        if (flowRate < 0.05) flowRate = 0;
+      }
     }
     float ppl = flowCalibration * 60.0;
     if (ppl > 0) govSupplyLitres += (float)pc / ppl;
@@ -151,14 +166,13 @@ void loop() {
   if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    // Optimized Batch Fetch: Get all sensor and valve data in TWO calls
-    float rameshFlow = 0.0;
-    float rameshTotal = 0.0;
-    bool rTamper = false;
-    float priyaTotal = 0.0;
-    
-    bool rValveUser = true, rValveGov = true;
-    bool pValveUser = true, pValveGov = true;
+    // PERSISTENT FETCH: Retain last known values if network fails
+    static float rameshFlow = 0.0;
+    static float rameshTotal = 0.0;
+    static bool rTamper = false;
+    static float priyaTotal = 0.0;
+    static bool rValveUser = true, rValveGov = true;
+    static bool pValveUser = true, pValveGov = true;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();

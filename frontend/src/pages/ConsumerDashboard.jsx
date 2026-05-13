@@ -293,7 +293,7 @@ const ConsumerDashboard = () => {
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${emergencyActive ? 'emergency-active-dashboard' : ''}`}>
       <div className="dashboard">
         <header className="header-flex" style={{ marginBottom: '2rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -310,7 +310,9 @@ const ConsumerDashboard = () => {
                       success: 'System Synced',
                       error: 'Sync failed',
                     }
-                  ).then(() => window.location.reload());
+                  ).then(() => {
+                    // Reactive update via Firebase onValue
+                  });
                 }} 
                 className="logout-btn"
                 style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
@@ -489,13 +491,22 @@ const ConsumerDashboard = () => {
                     )}
                   </div>
 
-                  <div className="card">
-                    <h3>Total Usage</h3>
+                  <div className="card" style={{ border: '1px solid var(--primary)', background: 'var(--primary-light)' }}>
+                    <h3 style={{ color: 'var(--primary)' }}>Normal Billed</h3>
                     <div className="value" style={{ fontSize: '1.8rem' }}>
                       {(myNodeData?.totalLitres || 0).toFixed(1)}
                       <span className="unit">L</span>
                     </div>
-                    <div className="status" style={{ fontSize: '0.6rem' }}>TODAY</div>
+                    <div className="status" style={{ fontSize: '0.6rem' }}>SESSION USAGE</div>
+                  </div>
+
+                  <div className="card" style={{ border: '1px solid var(--danger)', background: 'var(--danger-light)' }}>
+                    <h3 style={{ color: 'var(--danger)' }}>SOS Consumption</h3>
+                    <div className="value" style={{ fontSize: '1.8rem', color: 'var(--danger)' }}>
+                      {(myNodeData?.emergencyLitresTotal || (myNodeData?.totalLitres - myNodeData?.billedLitres) || 0).toFixed(1)}
+                      <span className="unit">L</span>
+                    </div>
+                    <div className="status" style={{ fontSize: '0.6rem', background: 'var(--danger)', color: 'white' }}>FREE / SOS</div>
                   </div>
                 </>
               )}

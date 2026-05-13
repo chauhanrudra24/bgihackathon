@@ -26,7 +26,9 @@ unsigned long lastControlCheckMs   = 0;
 Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
-float baseAccelX, baseAccelY, baseAccelZ;
+float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
+const float TAMPER_THRESHOLD = 0.8; // High sensitivity for human touch
+const float SHOCK_THRESHOLD = 3.5;  // Instant knock detection
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3
@@ -41,12 +43,12 @@ bool  emergencyActive  = false;
 bool  tamperDetected   = false;
 bool  currentValveState = false;
 float flowRate         = 0.0;
-float totalLitres      = 0.0;   // Billed usage (only when valve OPEN, not emergency)
-float emergencyLitres  = 0.0;   // Total emergency litres used (all-time)
-float emergencyValue   = 0.0;   // Current SOS quota remaining (L)
+float totalLitres      = 0.0;   // Billed usage
+float emergencyLitres  = 0.0;   // Total used this session
+float emergencyValue   = 0.0;   // Current quota
 unsigned long lastFlowCalc = 0;
 unsigned long lastValveActionTime = 0;
-float flowCalibration  = 98.0; // F = 98 for 6mm ID pipe
+float flowCalibration  = 98.0; 
 
 // ========================= BUTTON ISR =========================
 volatile bool physicalEmergencyRequested = false;
@@ -75,11 +77,23 @@ void logAlert(const char* node, const char* type, const char* msg) {
 
 // ========================= EMERGENCY CONTROL =========================
 void setEmergency(bool state, const char* source) {
+  if (emergencyActive == state) return; // Ignore if no change
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
+  
   if (emergencyActive) {
     emergencyValue = 0.1; // 100ml quota per activation
+  } else {
+    // Log to Firestore on deactivation
+    FirebaseJson log;
+    log.add("nodeId", "consumer_node");
+    log.add("event", "SOS_OVERRIDE");
+    log.add("source", source);
+    log.add("duration", millis() / 1000); // Simple uptime-based duration for context
+    log.set("timestamp/.sv", "timestamp");
+    Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", "emergencyLogs", log.raw());
   }
+
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
   Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyValue);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
@@ -121,6 +135,14 @@ void setup() {
   fbdo.setResponseSize(1024);
   fbdo.setBSSLBufferSize(2048, 1024); // Increased for SSL stability
 
+  // ---- Data Recovery ----
+  if (Firebase.ready()) {
+    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/totalLitres"))) {
+      totalLitres = fbdo.floatData();
+      Serial.printf("Recovered Total: %.2f L\n", totalLitres);
+    }
+  }
+
   // Hardware init
   pinMode(EMERGENCY_LED_PIN, OUTPUT);
   digitalWrite(EMERGENCY_LED_PIN, LOW);
@@ -151,6 +173,7 @@ void setup() {
     mpuInitialized = false;
     Serial.println(F("MPU6050 FAIL"));
   }
+
   Serial.printf("Setup OK | Heap: %d\n", ESP.getFreeHeap());
 }
 
@@ -173,19 +196,30 @@ void loop() {
     wifiDownStartTime = 0;
   }
 
-  // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
+  // ---- 0b. EMERGENCY BUTTON (2s Long Press to Start, Short Press to Stop) ----
+  static unsigned long btnPressStartTime = 0;
+  bool btnState = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+  
+  if (btnState) {
+    if (btnPressStartTime == 0) btnPressStartTime = millis();
+    if (!emergencyActive && (millis() - btnPressStartTime > 2000)) {
+       setEmergency(true, "PHYSICAL_BUTTON_HOLD");
+       btnPressStartTime = 0; // Prevent repeat
+    }
+  } else {
+    if (btnPressStartTime > 0) {
+       unsigned long duration = millis() - btnPressStartTime;
+       // Short press to STOP if already active
+       if (emergencyActive && duration < 800 && duration > 50) {
+          setEmergency(false, "PHYSICAL_BUTTON_STOP");
+       }
+       btnPressStartTime = 0;
+    }
+  }
+
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    // Debounce & EMI Check: Wait 50ms and check if button is STILL pressed
-    delay(50);
-    if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
-      // IGNORE interrupts for 2.0s after relay toggles to avoid EMI noise
-      if (millis() - lastValveActionTime > 2000) {
-        toggleEmergency("PHYSICAL_BUTTON");
-      } else {
-        Serial.println(F("Ignored noisy button interrupt during relay switch."));
-      }
-    }
+    // ISR now only sets a flag; we handle logic here for stability
   }
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
@@ -260,9 +294,16 @@ void loop() {
     if (sec > 0) {
       float hz = pc / sec;
       float raw = hz / flowCalibration; // L/min
-      flowRate = (pc == 0) ? 0 : (flowRate * 0.5 + raw * 0.5);
+      // Sticky Filter: Slower decay to prevent flickering to 0
+      if (pc > 0) {
+        flowRate = flowRate * 0.4 + raw * 0.6;
+      } else {
+        flowRate = flowRate * 0.8; // Slow decay instead of instant 0
+        if (flowRate < 0.02) flowRate = 0;
+      }
     } else {
-      flowRate = 0;
+      flowRate = flowRate * 0.8;
+      if (flowRate < 0.02) flowRate = 0;
     }
 
     float litres = (float)pc / (flowCalibration * 60.0); 
@@ -294,13 +335,15 @@ void loop() {
       float dy = abs(a.acceleration.y - baseAccelY);
       float dz = abs(a.acceleration.z - baseAccelZ);
       
-      if (dx > 1.5 || dy > 1.5 || dz > 1.5) {
+      if (dx > TAMPER_THRESHOLD || dy > TAMPER_THRESHOLD || dz > TAMPER_THRESHOLD || 
+          dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
         if (movementStart == 0) movementStart = millis();
-        if (millis() - movementStart > 500 && (millis() - lastValveActionTime > 3000)) { 
-          if (!tamperDetected) {
+        // Trigger instantly for large shocks, otherwise 300ms for motion
+        if ((millis() - movementStart > 300) || dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
+          if (!tamperDetected && (millis() - lastValveActionTime > 3000)) {
             tamperDetected = true;
             lastTamperTime = millis();
-            logAlert("Ramesh", "TAMPER", "Instant motion detected! Valve LOCKED.");
+            logAlert("Ramesh", "TAMPER", "Human touch or displacement detected! Blocking valve.");
             Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
           }
         }

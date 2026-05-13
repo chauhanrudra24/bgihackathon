@@ -273,7 +273,8 @@ const NodeCard = ({ title, nodeData }) => {
 // =========================
 // CONSUMER VALVE + FLOW CARD
 // =========================
-const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
+// Memoized to prevent full-page re-render flicker during WebSocket heartbeats
+const ConsumerCard = React.memo(({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
@@ -616,7 +617,7 @@ const Dashboard = () => {
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const newData = snapshot.val();
       if (newData) {
-        setData(newData);
+        setData(prev => ({ ...prev, ...newData })); // Persistent Merge
         setErrorMsg('');
       } else {
         setErrorMsg('Connected to Firebase, but sensorData is empty.');
@@ -627,15 +628,18 @@ const Dashboard = () => {
     });
 
     const unsubscribeValves = onValue(valvesRef, (snapshot) => {
-      setValves(snapshot.val() || {});
+      const vData = snapshot.val();
+      if (vData) setValves(prev => ({ ...prev, ...vData }));
     });
 
     const unsubscribeAccounts = onValue(accountsRef, (snapshot) => {
-      setAccounts(snapshot.val() || {});
+      const acctData = snapshot.val();
+      if (acctData) setAccounts(prev => ({ ...prev, ...acctData }));
     });
 
     const unsubscribeCommands = onValue(commandsRef, (snapshot) => {
-      setCommands(snapshot.val() || {});
+      const cmdData = snapshot.val();
+      if (cmdData) setCommands(prev => ({ ...prev, ...cmdData }));
     });
 
     const alertLogsRef = ref(db, 'alertLogs');
@@ -658,6 +662,18 @@ const Dashboard = () => {
       unsubscribeAlertLogs();
     };
   }, [navigate]);
+
+  // ---- SYNC HEARTBEAT TIMER (Next Refresh Countdown) ----
+  const [syncCountdown, setSyncCountdown] = useState(5.0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSyncCountdown(prev => {
+        if (prev <= 0.1) return 5.0; // Reset every 5s (Gov node heartbeat frequency)
+        return parseFloat((prev - 0.1).toFixed(1));
+      });
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
 
   // ---- INSTANT ALERT DETECTION ----
   const [lastAlertCount, setLastAlertCount] = useState(0);
@@ -695,7 +711,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!data || commands.resetAll) return;
     const govNode = data.gov_node;
-    if (!isNodeOnline(govNode) || govNode.flowRate <= 2.0) {
+    if (!isNodeOnline(govNode) || govNode.flowRate <= 3.0) {
       theftStartTimes.current = {}; // Reset all timers if gov flow stops
       return;
     }
@@ -718,7 +734,7 @@ const Dashboard = () => {
           const duration = (Date.now() - theftStartTimes.current[nodeId]) / 1000;
           if (duration >= 5) {
             set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
-            set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>2L/min) but no consumer flow detected (5s persistence)');
+            set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>3L/min) but no consumer flow detected (5s persistence)');
             set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
             set(ref(db, `valves/${nodeId}/gov`), false);
             delete theftStartTimes.current[nodeId]; // Clear after triggering
@@ -865,13 +881,13 @@ const Dashboard = () => {
   const handleBlockToggle = async (nodeId) => {
     const account = accounts[nodeId] || {};
     const nodeData = data[nodeId] || {};
-    const isBlocking = !(account.theftFlagged || account.blocked || nodeData.tamperDetected);
+    const isUnblocking = (account.theftFlagged || account.blocked || nodeData.tamperDetected);
     
-    const toastId = toast.loading(isBlocking ? "Blocking user..." : "Unblocking & clearing flags...");
+    const toastId = toast.loading(isUnblocking ? "Unblocking & clearing flags..." : "Blocking user...");
 
     try {
-      if (!isBlocking) {
-        // Unblock: clear flags and re-open valve
+      if (isUnblocking) {
+        // Unblock: clear ALL flags and re-open valve
         const updates = {};
         updates[`accounts/${nodeId}/theftFlagged`] = false;
         updates[`accounts/${nodeId}/blocked`] = false;
@@ -912,8 +928,11 @@ const Dashboard = () => {
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
 
-  const govNode = data.gov_node || {};
-  const theftStatus = govNode.theftStatus || 'NORMAL';
+  const { govNode, theftStatus } = useMemo(() => {
+    const node = data.gov_node || {};
+    const status = node.theftStatus || 'NORMAL';
+    return { govNode: node, theftStatus: status };
+  }, [data]);
 
   // Gather flagged consumers for the theft list
   const flaggedConsumers = CONSUMER_NODES.filter(({ nodeId }) => {
@@ -1358,6 +1377,16 @@ const Dashboard = () => {
           <div className="header-flex">
               <h1>🏛️ Government Control Center</h1>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div className="sync-monitor-box">
+                  <div className="sync-timer-ring">
+                    <svg viewBox="0 0 36 36" className="circular-chart">
+                      <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                      <path className="circle" strokeDasharray={`${(syncCountdown / 5) * 100}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <span className="sync-text">{syncCountdown}s</span>
+                  </div>
+                  <span className="sync-label">NEXT SYNC</span>
+                </div>
                 <button 
                   onClick={() => {
                     toast.promise(
@@ -1367,7 +1396,9 @@ const Dashboard = () => {
                         success: 'All Nodes Synced',
                         error: 'Sync failed',
                       }
-                    ).then(() => window.location.reload());
+                    ).then(() => {
+                      // No reload needed
+                    });
                   }} 
                   className="reset-btn"
                   style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}

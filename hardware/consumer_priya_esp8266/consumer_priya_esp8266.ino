@@ -35,6 +35,8 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX, baseAccelY, baseAccelZ;
+const float TAMPER_THRESHOLD = 0.8; // High sensitivity for human touch
+const float SHOCK_THRESHOLD = 3.5;  // Instant knock detection
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3
@@ -76,13 +78,24 @@ void logAlert(const char* node, const char* type, const char* msg) {
 
 // ========================= EMERGENCY CONTROL =========================
 void setEmergency(bool state, const char* source) {
+  if (emergencyActive == state) return; // Ignore if no change
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
   if (emergencyActive) {
     emergencyValue = 60.0; // 60 seconds quota per activation
     lastEmergencyTick = millis();
+  } else {
+    // Log to Firestore on completion
+    FirebaseJson log;
+    log.add("nodeId", "consumer_node_8266");
+    log.add("event", "SOS_OVERRIDE");
+    log.add("source", source);
+    log.add("type", "TIME_BASED");
+    log.set("timestamp/.sv", "timestamp");
+    Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", "emergencyLogs", log.raw());
   }
+  
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
   Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencyValue);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
@@ -174,19 +187,30 @@ void loop() {
     wifiDownStartTime = 0;
   }
 
-  // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
+  // ---- 0b. EMERGENCY BUTTON (2s Long Press to Start, Short Press to Stop) ----
+  static unsigned long btnPressStartTime = 0;
+  bool btnState = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+  
+  if (btnState) {
+    if (btnPressStartTime == 0) btnPressStartTime = millis();
+    if (!emergencyActive && (millis() - btnPressStartTime > 2000)) {
+       setEmergency(true, "PHYSICAL_BUTTON_HOLD");
+       btnPressStartTime = 0; // Prevent repeat
+    }
+  } else {
+    if (btnPressStartTime > 0) {
+       unsigned long duration = millis() - btnPressStartTime;
+       // Short press to STOP if already active
+       if (emergencyActive && duration < 800 && duration > 50) {
+          setEmergency(false, "PHYSICAL_BUTTON_STOP");
+       }
+       btnPressStartTime = 0;
+    }
+  }
+
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    // Debounce & EMI Check: Wait 50ms and check if button is STILL pressed
-    delay(50);
-    if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
-      // IGNORE interrupts for 2.0s after relay toggles to avoid EMI noise
-      if (millis() - lastValveActionTime > 2000) {
-        toggleEmergency("PHYSICAL_BUTTON");
-      } else {
-        Serial.println(F("Ignored noisy button interrupt during relay switch."));
-      }
-    }
+    // Handled above in logic block
   }
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
@@ -272,13 +296,15 @@ void loop() {
     float dy = abs(a.acceleration.y - baseAccelY);
     float dz = abs(a.acceleration.z - baseAccelZ);
     // Threshold decreased to 1.5 + 500ms persistence for 'Instant' feel
-    if (dx > 1.5 || dy > 1.5 || dz > 1.5) {
+    if (dx > TAMPER_THRESHOLD || dy > TAMPER_THRESHOLD || dz > TAMPER_THRESHOLD || 
+        dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
       if (movementStart == 0) movementStart = millis();
-      if (millis() - movementStart > 500) {
-        if (!tamperDetected) {
+      // Trigger instantly for large shocks, otherwise 300ms for motion
+      if ((millis() - movementStart > 300) || dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
+        if (!tamperDetected && (millis() - lastValveActionTime > 3000)) {
           tamperDetected = true;
           lastTamperTime = millis();
-          logAlert("Priya", "TAMPER", "Instant motion detected! Valve LOCKED.");
+          logAlert("Priya", "TAMPER", "Human touch or displacement detected! Blocking valve.");
           Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
         }
       }

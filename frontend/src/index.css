@@ -1462,3 +1462,93 @@ h2 {
     font-weight: 800;
     font-size: 1rem;
 }
+
+/* ================================== */
+/* SYNC MONITOR & CIRCULAR HEARTBEAT  */
+/* ================================== */
+.sync-monitor-box {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-color);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+.sync-timer-ring {
+    position: relative;
+    width: 32px;
+    height: 32px;
+}
+
+.circular-chart {
+    display: block;
+    margin: 0 auto;
+    width: 100%;
+    height: 100%;
+}
+
+.circle-bg {
+    fill: none;
+    stroke: var(--border-color);
+    stroke-width: 3.8;
+}
+
+.circle {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 3.8;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.1s linear;
+}
+
+.sync-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--primary);
+}
+
+.sync-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+}
+
+/* ================================== */
+/* EMERGENCY DASHBOARD THEME (RED)    */
+/* ================================== */
+.emergency-active-dashboard {
+    background-color: #450a0a !important;
+}
+
+.emergency-active-dashboard .dashboard {
+    background: #1a0202 !important;
+    border-color: #991b1b !important;
+    color: #fecaca !important;
+}
+
+.emergency-active-dashboard h1, 
+.emergency-active-dashboard h2,
+.emergency-active-dashboard h3 {
+    color: #fecaca !important;
+}
+
+.emergency-active-dashboard .card {
+    background: #270606 !important;
+    border-color: #7f1d1d !important;
+}
+
+.emergency-active-dashboard .value {
+    color: #fca5a5 !important;
+}
+
+.emergency-active-dashboard .header-flex {
+    border-color: #7f1d1d !important;
+}
+
