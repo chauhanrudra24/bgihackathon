@@ -161,8 +161,8 @@ const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
 // =========================
 // SENSOR NODE CARD (Gov Node)
 // =========================
-const NodeCard = ({ title, nodeData }) => {
-  const online = isNodeOnline(nodeData);
+const NodeCard = ({ title, nodeData, online: onlineOverride }) => {
+  const online = onlineOverride ?? isNodeOnline(nodeData);
 
   if (!nodeData || !online) {
     return (
@@ -600,6 +600,19 @@ const Dashboard = () => {
 
   const navigate = useNavigate();
 
+  // ---- STABLE ONLINE STATUS (prevents UI flicker during brief jitter) ----
+  const lastOnlineRef = useRef({});
+  const getStableOnline = (nodeId, nodeData, graceMs = 15000) => {
+    const rawOnline = isNodeOnline(nodeData);
+    const now = Date.now();
+    if (rawOnline) {
+      lastOnlineRef.current[nodeId] = now;
+      return true;
+    }
+    const lastOk = lastOnlineRef.current[nodeId] || 0;
+    return lastOk > 0 && (now - lastOk) < graceMs;
+  };
+
   const showPopup = (config) => {
     setPopup({ isOpen: true, ...config });
   };
@@ -915,9 +928,14 @@ const Dashboard = () => {
   const renderDashboard = () => (
     <div className="main-content">
       {/* Government Node - Water Quality + Flow */}
+      {/*
+        NOTE: we keep Gov node "ONLINE" sticky for a short grace window so it
+        doesn't flash OFFLINE due to sporadic `lastSeen` update delays.
+      */}
       <NodeCard 
         title="🏛️ Rau Pumping Station (BGI Indore Area)" 
         nodeData={govNode} 
+        online={getStableOnline('gov_node', govNode)}
       />
 
       {/* Supply vs Consumption Summary */}
