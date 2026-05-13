@@ -92,8 +92,8 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   
-  fbdo.setResponseSize(1024);
-  fbdo.setBSSLBufferSize(1024, 512); // Standard buffers like consumer node
+  fbdo.setResponseSize(2048); // Increased for ESP32 stability
+  fbdo.setBSSLBufferSize(2048, 1024); 
 
   analogSetAttenuation(ADC_11db);
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
@@ -151,17 +151,16 @@ void loop() {
   if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    // Fetch real-time Ramesh flow (non-blocking yield)
+    // Consolidated Fetch: Get all Ramesh data in ONE network call
     float rameshFlow = 0.0;
-    yield();
-    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/consumer_node/flowRate"))) {
-      rameshFlow = fbdo.floatData();
-    }
-    yield();
-    
-    // Check tamper flags
     bool rTamper = false;
-    if (Firebase.RTDB.getBool(&fbdo, F("sensorData/consumer_node/tamperDetected"))) rTamper = fbdo.boolData();
+    
+    if (Firebase.RTDB.getJSON(&fbdo, F("sensorData/consumer_node"))) {
+      FirebaseJson &res = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (res.get(d, F("flowRate"))) rameshFlow = d.floatValue;
+      if (res.get(d, F("tamperDetected"))) rTamper = d.boolValue;
+    }
     
     static bool lastRTamper = false;
     if (rTamper && !lastRTamper) {
@@ -172,26 +171,27 @@ void loop() {
     lastRTamper = rTamper;
 
     // RULE: If Gov Supply has flow (>0.15) but Consumer shows 0 for > 8s
-    // Check if valve is supposed to be open
     bool consumerValveShouldBeOpen = true;
+    // Check if valve is supposed to be open (Optimized check)
     if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node/user"))) {
-       bool userVal = fbdo.boolData();
-       if (!userVal) consumerValveShouldBeOpen = false;
+       if (!fbdo.boolData()) consumerValveShouldBeOpen = false;
     }
 
     if (flowRate > 0.15 && rameshFlow < 0.02) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 8000) { // Increased to 8s
+      } else if (millis() - theftAlertStartTime > 8000) {
         if (theftStatus != "THEFT FLAGGED") {
-          // Double check: is flow significant?
           if (flowRate > 0.4 || !consumerValveShouldBeOpen) { 
             theftStatus = "THEFT FLAGGED";
-            logAlert("System", "THEFT", "Ramesh node: Main supply flowing but consumer meter shows 0. Blocking.");
-            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
-            Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Main supply bypass suspected (Flow mismatch)");
+            logAlert("System", "THEFT", "Ramesh node: Main supply bypass suspected. Blocking.");
+            
+            FirebaseJson updates;
+            updates.set("valves/consumer_node/gov", false);
+            updates.set("accounts/consumer_node/theftFlagged", true);
+            updates.set("accounts/consumer_node/theftReason", "Main supply bypass suspected (Flow mismatch)");
+            Firebase.RTDB.updateNode(&fbdo, "/", &updates);
           }
         }
       }
@@ -200,8 +200,11 @@ void loop() {
       if (theftStatus != "THEFT FLAGGED") theftStatus = "NORMAL";
     }
     
-    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), theftStatus);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"), govSupplyLitres);
+    // Batch Update Status
+    FirebaseJson statusUpdates;
+    statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
+    statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
+    Firebase.RTDB.updateNode(&fbdo, "/", &statusUpdates);
   }
 
   // ---- 4. DATA SYNC ----
