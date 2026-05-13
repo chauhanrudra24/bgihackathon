@@ -33,7 +33,7 @@ volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;
 float govSupplyLitres = 0.0;     // Total litres passed through main supply
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0;
+float flowCalibration = 98.0; // F = 98 for 6mm ID pipe (1L = 5880 pulses)
 
 // ========================= THEFT LOGIC =========================
 String theftStatus = "NORMAL";
@@ -171,18 +171,28 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // RULE: If Gov Supply has flow (>0.1) but Consumer shows 0 for > 5s
-    if (flowRate > 0.1 && rameshFlow < 0.02) {
+    // RULE: If Gov Supply has flow (>0.15) but Consumer shows 0 for > 8s
+    // Check if valve is supposed to be open
+    bool consumerValveShouldBeOpen = true;
+    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node/user"))) {
+       bool userVal = fbdo.boolData();
+       if (!userVal) consumerValveShouldBeOpen = false;
+    }
+
+    if (flowRate > 0.15 && rameshFlow < 0.02) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 5000) {
+      } else if (millis() - theftAlertStartTime > 8000) { // Increased to 8s
         if (theftStatus != "THEFT FLAGGED") {
-          theftStatus = "THEFT FLAGGED";
-          logAlert("System", "THEFT", "Ramesh node: Main supply flowing but consumer meter shows 0. Blocking.");
-          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-          Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
-          Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Main supply bypass suspected (Flow mismatch)");
+          // Double check: is flow significant?
+          if (flowRate > 0.4 || !consumerValveShouldBeOpen) { 
+            theftStatus = "THEFT FLAGGED";
+            logAlert("System", "THEFT", "Ramesh node: Main supply flowing but consumer meter shows 0. Blocking.");
+            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+            Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), true);
+            Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Main supply bypass suspected (Flow mismatch)");
+          }
         }
       }
     } else {

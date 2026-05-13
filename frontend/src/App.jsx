@@ -4,9 +4,12 @@ import Dashboard from './pages/Dashboard';
 import ConsumerDashboard from './pages/ConsumerDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 
+import { Toaster } from 'react-hot-toast';
+
 function App() {
   return (
     <Router>
+      <Toaster position="top-center" reverseOrder={false} />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={

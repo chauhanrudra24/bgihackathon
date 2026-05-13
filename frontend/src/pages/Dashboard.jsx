@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue, set, remove } from 'firebase/database';
+import { ref, onValue, set, remove, update } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firestore } from '../firebase';
+import toast from 'react-hot-toast';
 
 const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
@@ -442,8 +443,8 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
 const SettingsView = () => {
   const [settings, setSettings] = useState(null);
   const [localPrice, setLocalPrice] = useState(0.5);
-  const [localGovCal, setLocalGovCal] = useState(96.0);
-  const [localConsCal, setLocalConsCal] = useState(96.0);
+  const [localGovCal, setLocalGovCal] = useState(98.0);
+  const [localConsCal, setLocalConsCal] = useState(98.0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -455,8 +456,8 @@ const SettingsView = () => {
       if (s) {
         setSettings(s);
         setLocalPrice(s.pricePerLiter ?? 0.5);
-        setLocalGovCal(s.govCalibration ?? 96.0);
-        setLocalConsCal(s.consumerCalibration ?? 96.0);
+        setLocalGovCal(s.govCalibration ?? 98.0);
+        setLocalConsCal(s.consumerCalibration ?? 98.0);
       }
     });
     return () => unsubscribe();
@@ -504,13 +505,13 @@ const SettingsView = () => {
               <div className="input-group">
                 <label>🏗️ Gov Node Calibration</label>
                 <input type="number" step="0.1" value={localGovCal} onChange={(e) => setLocalGovCal(e.target.value)} />
-                <small>Standard: 96.0. Calibrated for 6mm ID pipe. System now applies 0.15α smoothing.</small>
+                <small>Standard: 98.0 for 6mm ID pipe. Pulse Rate: F = Q * 98.</small>
               </div>
               
               <div className="input-group">
                 <label>🏠 Consumer Node Calibration</label>
                 <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
-                <small>Standard: 96.0. System automatically adjusts pulse-to-liter integration based on this value.</small>
+                <small>Standard: 98.0 for 6mm ID pipe. (1 Litre = 5880 Pulses).</small>
               </div>
             </div>
 
@@ -833,24 +834,50 @@ const Dashboard = () => {
     }
   };
 
-  const handleBlockToggle = (nodeId) => {
+  const handleBlockToggle = async (nodeId) => {
     const account = accounts[nodeId] || {};
     const nodeData = data[nodeId] || {};
-    if (account.theftFlagged || account.blocked || nodeData.tamperDetected) {
-      // Unblock: clear flags and re-open valve
-      set(ref(db, `accounts/${nodeId}/theftFlagged`), false);
-      set(ref(db, `accounts/${nodeId}/blocked`), false);
-      set(ref(db, `accounts/${nodeId}/theftReason`), null);
-      set(ref(db, `accounts/${nodeId}/theftTime`), null);
-      set(ref(db, `valves/${nodeId}/gov`), true);
-      // Clear tamper in sensorData and send command
-      set(ref(db, `sensorData/${nodeId}/tamperDetected`), false);
-      set(ref(db, `commands/${nodeId}/clearTamper`), true);
-      showPopup({ title: 'User Unblocked', message: 'All violations cleared. Valve opened and tamper flags reset.', icon: '✅', onConfirm: closePopup });
-    } else {
-      // Block user manually
-      set(ref(db, `accounts/${nodeId}/blocked`), true);
-      set(ref(db, `valves/${nodeId}/gov`), false);
+    const isBlocking = !(account.theftFlagged || account.blocked || nodeData.tamperDetected);
+    
+    const toastId = toast.loading(isBlocking ? "Blocking user..." : "Unblocking & clearing flags...");
+
+    try {
+      if (!isBlocking) {
+        // Unblock: clear flags and re-open valve
+        const updates = {};
+        updates[`accounts/${nodeId}/theftFlagged`] = false;
+        updates[`accounts/${nodeId}/blocked`] = false;
+        updates[`accounts/${nodeId}/theftReason`] = null;
+        updates[`accounts/${nodeId}/theftTime`] = null;
+        updates[`valves/${nodeId}/gov`] = true;
+        updates[`sensorData/${nodeId}/tamperDetected`] = false;
+        updates[`commands/${nodeId}/clearTamper`] = true;
+        
+        await update(ref(db), updates);
+        toast.success("User unblocked and flags cleared", { id: toastId });
+      } else {
+        // Block user manually
+        const updates = {};
+        updates[`accounts/${nodeId}/blocked`] = true;
+        updates[`valves/${nodeId}/gov`] = false;
+        
+        await update(ref(db), updates);
+        toast.success("User blocked successfully", { id: toastId });
+      }
+    } catch (error) {
+      toast.error("Action failed: " + error.message, { id: toastId });
+    }
+  };
+
+  const handleToggleValve = async (nodeId, currentState) => {
+    const newState = !currentState;
+    const toastId = toast.loading(newState ? "Opening valve..." : "Closing valve...");
+    
+    try {
+      await set(ref(db, `valves/${nodeId}/gov`), newState);
+      toast.success(`Valve ${newState ? 'Opened' : 'Closed'}`, { id: toastId });
+    } catch (error) {
+      toast.error("Failed to update valve", { id: toastId });
     }
   };
 
@@ -938,7 +965,7 @@ const Dashboard = () => {
               valveState={valves[nodeId]?.gov ?? true}
               nodeData={data[nodeId]}
               account={accounts[nodeId] || { balance: 500 }}
-              onToggleValve={() => set(ref(db, `valves/${nodeId}/gov`), !(valves[nodeId]?.gov ?? true))}
+              onToggleValve={() => handleToggleValve(nodeId, valves[nodeId]?.gov ?? true)}
               onBlockToggle={() => handleBlockToggle(nodeId)}
               onClearTamper={(id) => {
                 set(ref(db, `commands/${id}/clearTamper`), true);
@@ -1243,7 +1270,16 @@ const Dashboard = () => {
               <h1>🏛️ Government Control Center</h1>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 <button 
-                  onClick={() => window.location.reload()} 
+                  onClick={() => {
+                    toast.promise(
+                      new Promise(resolve => setTimeout(resolve, 800)),
+                      {
+                        loading: 'Syncing with grid...',
+                        success: 'All Nodes Synced',
+                        error: 'Sync failed',
+                      }
+                    ).then(() => window.location.reload());
+                  }} 
                   className="reset-btn"
                   style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >

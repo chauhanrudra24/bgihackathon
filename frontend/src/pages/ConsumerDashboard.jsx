@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ref, onValue, set } from 'firebase/database';
+import { ref, onValue, set, update } from 'firebase/database';
 import { db } from '../firebase';
+import toast from 'react-hot-toast';
 
 const ConsumerDashboard = () => {
   const [govData, setGovData] = useState(null);
@@ -110,11 +111,21 @@ const ConsumerDashboard = () => {
   }, [myNodeData?.totalLitres]);
 
 
-  const triggerEmergency = () => {
+  const triggerEmergency = async () => {
     const isActive = myNodeData?.emergencyActive || false;
-    const action = isActive ? "Stop" : "Activate";
-    if (window.confirm(`${action} SOS Emergency Water?`)) {
-      set(ref(db, `commands/${nodeId}/sosActive`), !isActive);
+    const action = isActive ? "Stopping" : "Activating";
+    
+    const toastId = toast.loading(`${action} SOS Emergency Water...`);
+    
+    try {
+      // Optimistic update for myNodeData (though it's usually synced from FB)
+      setMyNodeData(prev => ({ ...prev, emergencyActive: !isActive }));
+      
+      await set(ref(db, `commands/${nodeId}/sosActive`), !isActive);
+      toast.success(`SOS ${!isActive ? 'Activated' : 'Deactivated'}`, { id: toastId });
+    } catch (error) {
+      toast.error("Failed to trigger SOS", { id: toastId });
+      // Revert if needed (Firebase sync will handle it usually)
     }
   };
 
@@ -124,9 +135,26 @@ const ConsumerDashboard = () => {
     navigate('/');
   };
 
-  const toggleValve = () => {
-    if (!valveData.gov || account.blocked || account.theftFlagged || account.balance <= 0) return;
-    set(ref(db, `valves/${nodeId}/user`), !valveData.user);
+  const toggleValve = async () => {
+    if (!valveData.gov || account.blocked || account.theftFlagged || account.balance <= 0) {
+      toast.error("Valve is locked by authorities or low balance");
+      return;
+    }
+
+    const newState = !valveData.user;
+    const toastId = toast.loading(newState ? "Opening valve..." : "Closing valve...");
+
+    // Optimistic UI
+    const previousState = valveData.user;
+    setValveData(prev => ({ ...prev, user: newState }));
+
+    try {
+      await set(ref(db, `valves/${nodeId}/user`), newState);
+      toast.success(`Valve ${newState ? 'Opened' : 'Closed'}`, { id: toastId });
+    } catch (error) {
+      setValveData(prev => ({ ...prev, user: previousState }));
+      toast.error("Failed to update valve", { id: toastId });
+    }
   };
 
   // ===== SIMULATED RAZORPAY PAYMENT =====
@@ -273,7 +301,16 @@ const ConsumerDashboard = () => {
             </div>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <button 
-                onClick={() => window.location.reload()} 
+                onClick={() => {
+                  toast.promise(
+                    new Promise((resolve) => setTimeout(resolve, 1000)),
+                    {
+                      loading: 'Syncing with grid...',
+                      success: 'System Synced',
+                      error: 'Sync failed',
+                    }
+                  ).then(() => window.location.reload());
+                }} 
                 className="logout-btn"
                 style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
               >

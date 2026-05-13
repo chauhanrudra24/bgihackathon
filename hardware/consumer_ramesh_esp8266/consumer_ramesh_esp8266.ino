@@ -43,7 +43,8 @@ float flowRate         = 0.0;
 float totalLitres      = 0.0;   // Billed usage (only when valve OPEN, not emergency)
 float emergencyLitres  = 0.0;   // Emergency premium usage
 unsigned long lastFlowCalc = 0;
-float flowCalibration  = 98.0;
+unsigned long lastValveActionTime = 0;
+float flowCalibration  = 98.0; // F = 98 for 6mm ID pipe
 
 // ========================= BUTTON ISR =========================
 volatile bool physicalEmergencyRequested = false;
@@ -163,8 +164,13 @@ void loop() {
       if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
       if (j.get(d, F("user")) && d.success) usr = d.boolValue;
       // Tamper locks valve; Emergency overrides everything
-      currentValveState = (gov && usr && !tamperDetected) || emergencyActive;
-      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+      bool newState = (gov && usr && !tamperDetected) || emergencyActive;
+      if (newState != currentValveState) {
+        currentValveState = newState;
+        digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+        lastValveActionTime = millis();
+        Serial.printf("Relay switched: %s\n", currentValveState ? "OPEN" : "CLOSED");
+      }
     }
     yield();
 
@@ -217,13 +223,13 @@ void loop() {
     float sec = elapsed / 1000.0;
     if (sec > 0) {
       float hz = pc / sec;
-      float raw = (hz / 5880.0) * 60.0;
+      float raw = hz / flowCalibration; // L/min
       flowRate = (pc == 0) ? 0 : (flowRate * 0.5 + raw * 0.5);
     } else {
       flowRate = 0;
     }
 
-    float litres = (float)pc / 5880.0; 
+    float litres = (float)pc / (flowCalibration * 60.0); 
 
     if (litres > 0) {
       // KEY RULE: Only bill when valve is OPEN and NOT in emergency mode
@@ -254,7 +260,7 @@ void loop() {
       // Threshold increased from 1.5 to 3.0 to avoid vibration triggers
       if (dx > 3.0 || dy > 3.0 || dz > 3.0) {
         if (movementStart == 0) movementStart = millis();
-        if (millis() - movementStart > 1500) { // Must be moving for 1.5s
+        if (millis() - movementStart > 2000 && (millis() - lastValveActionTime > 5000)) { // Must be moving for 2s, ignore mechanical shock from valve
           if (!tamperDetected) {
             tamperDetected = true;
             lastTamperTime = millis();
@@ -272,9 +278,9 @@ void loop() {
         baseAccelZ = baseAccelZ * 0.95 + a.acceleration.z * 0.05;
       }
     }
-    if (flowTamper && !tamperDetected) {
-      // Only flag if flow is significant (>1.0 L/m) to avoid noise lockouts
-      if (flowRate > 1.0) {
+    // Only flag if flow is significant (>1.0 L/m) AND valve has been closed for > 5s
+    if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 5000)) {
+      if (flowRate > 1.2) {
         tamperDetected = true;
         logAlert("Ramesh", "TAMPER", "High flow detected while valve CLOSED! Bypass suspected.");
         Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false); // BLOCK USER
