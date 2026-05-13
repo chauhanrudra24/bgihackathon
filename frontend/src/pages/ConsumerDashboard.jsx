@@ -187,10 +187,11 @@ const ConsumerDashboard = () => {
     }, 2000);
   };
 
-  const isNodeOnline = (timestamp) => {
-    if (!timestamp) return false;
-    // 60 second threshold + drift tolerance
-    return Math.abs(Date.now() - timestamp) < 60000;
+  const isNodeOnline = (lastSeen) => {
+    if (!lastSeen) return false;
+    const now = Date.now();
+    // Increased to 45s to provide a larger buffer for network latency
+    return (now - lastSeen) < 45000;
   };
 
   const myNodeOnline = isNodeOnline(myNodeData?.lastSeen);
@@ -342,7 +343,11 @@ const ConsumerDashboard = () => {
 
         {/* Offline Alert Banner */}
         {!myNodeOnline && (
-          <div className="theft-banner alert" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #4b5563, #1f2937)' }}>
+          <div className="theft-banner alert animate-fade-in" style={{ 
+            marginBottom: '2rem', 
+            background: 'linear-gradient(135deg, #4b5563, #1f2937)',
+            animation: 'fadeIn 0.5s ease-in'
+          }}>
             <div className="theft-banner-icon">🔌</div>
             <div className="theft-banner-content">
               <h3>HARDWARE OFFLINE</h3>
@@ -409,7 +414,7 @@ const ConsumerDashboard = () => {
         <section className="node-container">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
             <h2 style={{ fontSize: '1.1rem', margin: 0 }}>🏠 My Water System</h2>
-            <span className={`status ${myNodeOnline ? (isBlocked ? 'dirty' : (!valveData.gov ? 'warning' : '')) : 'offline'}`}>
+            <span className={`status ${myNodeOnline ? (isBlocked ? 'dirty' : (!valveData.gov ? 'warning' : '')) : 'offline'}`} style={{ transition: 'all 0.5s ease' }}>
               {myNodeOnline ? (isBlocked ? '🔒 BLOCKED' : (!valveData.gov ? '🛑 CUT' : '● ONLINE')) : 'OFFLINE'}
             </span>
           </div>

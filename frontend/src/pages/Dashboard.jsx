@@ -7,9 +7,10 @@ import toast from 'react-hot-toast';
 
 const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
-  // 60s threshold + drift tolerance
-  const diff = Math.abs(Date.now() - nodeData.lastSeen);
-  return diff < 60000;
+  const now = Date.now();
+  const lastSeen = nodeData.lastSeen;
+  // Increased to 45s to prevent flickering during network lag
+  return (now - lastSeen) < 45000; 
 };
 
 // =========================
@@ -341,7 +342,13 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
           }}>
             ₹{balance.toFixed(0)}
           </span>
-          <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`}>
+          <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`} style={{
+            padding: '0.25rem 0.75rem',
+            borderRadius: '2rem',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            transition: 'all 0.5s ease'
+          }}>
             {online ? (
               theftFlagged ? (
                 <span className="status-label theft-flagged">🚩 THEFT FLAGGED</span>
