@@ -897,14 +897,14 @@ const Dashboard = () => {
     }
   };
 
-  if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
-  if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
-
   const { govNode, theftStatus } = useMemo(() => {
-    const node = data.gov_node || {};
+    const node = data?.gov_node || {};
     const status = node.theftStatus || 'NORMAL';
     return { govNode: node, theftStatus: status };
   }, [data]);
+
+  if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
+  if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
 
   // Gather flagged consumers for the theft list
   const flaggedConsumers = CONSUMER_NODES.filter(({ nodeId }) => {
