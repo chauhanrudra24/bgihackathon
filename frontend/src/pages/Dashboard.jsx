@@ -1158,6 +1158,61 @@ const Dashboard = () => {
           })}
         </div>
       </div>
+
+      <div className="card" style={{ marginTop: '2rem' }}>
+        <h2>📝 Live Raw Data Feed</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Detailed stream of raw sensor values and aggregate network metrics.</p>
+        <div className="gov-table-container">
+          <table className="gov-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border-color)' }}>
+                <th style={{ padding: '1rem' }}>Metric</th>
+                <th>Value</th>
+                <th>Unit</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Main Supply Flow</td>
+                <td>{(govNode.flowRate || 0).toFixed(2)}</td>
+                <td>L/min</td>
+                <td><span className="status" style={{ fontSize: '0.6rem' }}>LIVE</span></td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Plant Supply</td>
+                <td>{(govNode.govSupplyLitres || 0).toFixed(2)}</td>
+                <td>L</td>
+                <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Consumer Usage</td>
+                <td>{(govNode.consumerTotalLitres || 0).toFixed(2)}</td>
+                <td>L</td>
+                <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Unaccounted Loss</td>
+                <td>{(govNode.flowDifference || 0).toFixed(2)}</td>
+                <td>L</td>
+                <td><span className={`status ${govNode.flowDifference > 1.0 ? 'dirty' : ''}`} style={{ fontSize: '0.6rem' }}>{govNode.flowDifference > 1.0 ? 'LOSS DETECTED' : 'STABLE'}</span></td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Turbidity Sensor</td>
+                <td>{(govNode.turbidityVoltage || 0).toFixed(2)}</td>
+                <td>Volts</td>
+                <td><span className={govNode.turbidityConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.turbidityConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
+              </tr>
+              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>TDS Sensor</td>
+                <td>{(govNode.tdsValue || 0).toFixed(1)}</td>
+                <td>ppm</td>
+                <td><span className={govNode.tdsConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.tdsConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 

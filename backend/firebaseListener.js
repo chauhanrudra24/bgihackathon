@@ -39,14 +39,19 @@ module.exports = function(io) {
       if (now - lastSavedTime > 5000) {
         try {
           if (mongoose.connection.readyState === 1) { // 1 = Connected
+            const gov = data.gov_node || {};
             const newReading = new SensorData({
-              tdsValue: data.tdsValue || 0,
-              turbidityVoltage: data.turbidityVoltage || 0,
-              waterStatus: data.waterStatus || 'UNKNOWN'
+              tdsValue: gov.tdsValue || 0,
+              turbidityVoltage: gov.turbidityVoltage || 0,
+              waterStatus: gov.waterStatus || 'UNKNOWN',
+              govSupplyLitres: gov.govSupplyLitres || 0,
+              consumerTotalLitres: gov.consumerTotalLitres || 0,
+              flowDifference: gov.flowDifference || 0,
+              flowRate: gov.flowRate || 0
             });
             await newReading.save();
             lastSavedTime = now;
-            console.log('💾 Data archived to MongoDB');
+            console.log('💾 Detailed Data archived to MongoDB');
           }
         } catch (err) {
           console.error('❌ Error archiving to MongoDB:', err.message);

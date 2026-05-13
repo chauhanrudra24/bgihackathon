@@ -151,8 +151,9 @@ void loop() {
   if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    // Consolidated Fetch: Get all Ramesh data in ONE network call
+    // Fetch Ramesh data
     float rameshFlow = 0.0;
+    float rameshTotal = 0.0;
     bool rTamper = false;
     bool rValveUser = true;
     bool rValveGov = true;
@@ -161,6 +162,7 @@ void loop() {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
       if (res.get(d, F("flowRate"))) rameshFlow = d.floatValue;
+      if (res.get(d, F("totalLitres"))) rameshTotal = d.floatValue;
       if (res.get(d, F("tamperDetected"))) rTamper = d.boolValue;
     }
     if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node"))) {
@@ -170,9 +172,15 @@ void loop() {
       if (res.get(d, F("gov"))) rValveGov = d.boolValue;
     }
 
-    // Fetch Priya's valve state (Priya has no flow sensor)
+    // Fetch Priya data
+    float priyaTotal = 0.0;
     bool pValveUser = true;
     bool pValveGov = true;
+    if (Firebase.RTDB.getJSON(&fbdo, F("sensorData/consumer_node_8266"))) {
+      FirebaseJson &res = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (res.get(d, F("totalLitres"))) priyaTotal = d.floatValue;
+    }
     if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
@@ -182,6 +190,11 @@ void loop() {
 
     bool rameshOpen = (rValveUser && rValveGov);
     bool priyaOpen = (pValveUser && pValveGov);
+    
+    // Aggregate Data
+    float consumerTotalLitres = rameshTotal + priyaTotal;
+    float flowDifference = govSupplyLitres - consumerTotalLitres;
+    if (flowDifference < 0) flowDifference = 0; // Calibration drift protection
     
     static bool lastRTamper = false;
     if (rTamper && !lastRTamper) {
@@ -235,6 +248,8 @@ void loop() {
     FirebaseJson statusUpdates;
     statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
     statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
+    statusUpdates.set("sensorData/gov_node/consumerTotalLitres", consumerTotalLitres);
+    statusUpdates.set("sensorData/gov_node/flowDifference", flowDifference);
     Firebase.RTDB.updateNode(&fbdo, "/", &statusUpdates);
   }
 
@@ -259,6 +274,8 @@ void loop() {
 
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), tVolts);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tds);
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), (tds > 1.0));
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), (tVolts > 0.1));
     Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), (tVolts > 3.0) ? "CLEAR" : "DIRTY");
     
     Serial.printf("Gov Flow:%.2f | Supply:%.2f | TDS:%.0f | Status:%s\n", 
