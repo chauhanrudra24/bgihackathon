@@ -151,41 +151,31 @@ void loop() {
   if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
     theftCheckMillis = millis();
     
-    // Fetch Ramesh data
+    // Optimized Batch Fetch: Get all sensor and valve data in TWO calls
     float rameshFlow = 0.0;
     float rameshTotal = 0.0;
     bool rTamper = false;
-    bool rValveUser = true;
-    bool rValveGov = true;
+    float priyaTotal = 0.0;
     
-    if (Firebase.RTDB.getJSON(&fbdo, F("sensorData/consumer_node"))) {
+    bool rValveUser = true, rValveGov = true;
+    bool pValveUser = true, pValveGov = true;
+
+    if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
-      if (res.get(d, F("flowRate"))) rameshFlow = d.floatValue;
-      if (res.get(d, F("totalLitres"))) rameshTotal = d.floatValue;
-      if (res.get(d, F("tamperDetected"))) rTamper = d.boolValue;
-    }
-    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node"))) {
-      FirebaseJson &res = fbdo.jsonObject();
-      FirebaseJsonData d;
-      if (res.get(d, F("user"))) rValveUser = d.boolValue;
-      if (res.get(d, F("gov"))) rValveGov = d.boolValue;
+      if (res.get(d, F("consumer_node/flowRate"))) rameshFlow = d.floatValue;
+      if (res.get(d, F("consumer_node/totalLitres"))) rameshTotal = d.floatValue;
+      if (res.get(d, F("consumer_node/tamperDetected"))) rTamper = d.boolValue;
+      if (res.get(d, F("consumer_node_8266/totalLitres"))) priyaTotal = d.floatValue;
     }
 
-    // Fetch Priya data
-    float priyaTotal = 0.0;
-    bool pValveUser = true;
-    bool pValveGov = true;
-    if (Firebase.RTDB.getJSON(&fbdo, F("sensorData/consumer_node_8266"))) {
+    if (Firebase.RTDB.getJSON(&fbdo, F("valves"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
-      if (res.get(d, F("totalLitres"))) priyaTotal = d.floatValue;
-    }
-    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
-      FirebaseJson &res = fbdo.jsonObject();
-      FirebaseJsonData d;
-      if (res.get(d, F("user"))) pValveUser = d.boolValue;
-      if (res.get(d, F("gov"))) pValveGov = d.boolValue;
+      if (res.get(d, F("consumer_node/user"))) rValveUser = d.boolValue;
+      if (res.get(d, F("consumer_node/gov"))) rValveGov = d.boolValue;
+      if (res.get(d, F("consumer_node_8266/user"))) pValveUser = d.boolValue;
+      if (res.get(d, F("consumer_node_8266/gov"))) pValveGov = d.boolValue;
     }
 
     bool rameshOpen = (rValveUser && rValveGov);

@@ -9,8 +9,8 @@ const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
   const now = Date.now();
   const lastSeen = nodeData.lastSeen;
-  // Increased to 45s to prevent flickering during network lag
-  return (now - lastSeen) < 45000; 
+  // Increased to 60s to prevent flickering during network jitter or blocking I/O
+  return (now - lastSeen) < 60000; 
 };
 
 // =========================

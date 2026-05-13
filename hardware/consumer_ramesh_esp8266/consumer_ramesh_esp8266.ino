@@ -96,6 +96,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFiManager wm;
+  WiFi.setAutoReconnect(true); // Hardware level auto-reconnect
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
   digitalWrite(LED_BUILTIN, HIGH);
@@ -153,10 +154,18 @@ void loop() {
 
   // ---- 0. CONNECTION WATCHDOG ----
   static unsigned long lastWifiCheck = 0;
-  if (WiFi.status() != WL_CONNECTED && (millis() - lastWifiCheck > 2000)) {
-    lastWifiCheck = millis();
-    Serial.println("WiFi Lost. Reconnecting...");
-    WiFi.reconnect();
+  static unsigned long wifiDownStartTime = 0;
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wifiDownStartTime == 0) wifiDownStartTime = millis();
+    // Only attempt manual reconnect after 10s of sustained disconnect
+    if (millis() - wifiDownStartTime > 10000 && millis() - lastWifiCheck > 5000) {
+      lastWifiCheck = millis();
+      Serial.println("WiFi sustained loss. Manual reconnect...");
+      WiFi.reconnect();
+    }
+  } else {
+    wifiDownStartTime = 0;
   }
 
   // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
