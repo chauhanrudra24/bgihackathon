@@ -294,7 +294,10 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
       {/* Emergency Active Alert */}
       {emergencyActive && online && (
         <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
-          <span>🆘 EMERGENCY OVERRIDE ACTIVE</span> — Granting free water access ({hasSensor ? `${emergencyValue.toFixed(2)} L remaining` : `${Math.floor(emergencyValue)}s remaining`}).
+          <span>🆘 EMERGENCY OVERRIDE ACTIVE</span>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.9 }}>
+            Source: <strong>{nodeData?.emergencySource?.replace('_', ' ') || 'UNKNOWN'}</strong> | Remaining: {hasSensor ? `${emergencyValue.toFixed(2)} L` : `${Math.floor(emergencyValue)}s`}
+          </p>
         </div>
       )}
       {/* Tamper Alert */}
@@ -1239,7 +1242,14 @@ const Dashboard = () => {
           <div className="header-flex">
               <h1>🏛️ Government Control Center</h1>
               <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <button onClick={handleResetAllData} className="reset-btn">🔄 Reset All Data</button>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="reset-btn"
+                  style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  🔄 Force Sync
+                </button>
+                <button onClick={handleResetAllData} className="reset-btn">🗑️ Reset All Data</button>
                 <div className="status" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>ADMIN ACCESS</div>
               </div>
           </div>

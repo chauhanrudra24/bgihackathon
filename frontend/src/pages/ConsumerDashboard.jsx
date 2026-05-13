@@ -271,7 +271,16 @@ const ConsumerDashboard = () => {
               <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase' }}>Good Morning,</p>
               <h1 style={{ fontSize: '1.5rem' }}>{user.name}</h1>
             </div>
-            <button onClick={handleLogout} className="logout-btn">Logout</button>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="logout-btn"
+                style={{ background: 'white', color: 'var(--primary)', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                🔄 Sync
+              </button>
+              <button onClick={handleLogout} className="logout-btn">Logout</button>
+            </div>
         </header>
 
         {/* ===== PREPAID BALANCE CARD ===== */}

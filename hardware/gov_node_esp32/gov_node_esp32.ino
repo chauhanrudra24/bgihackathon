@@ -4,6 +4,7 @@
 #include "addons/RTDBHelper.h"
 #include <WiFiManager.h>
 #include <Ticker.h>
+#include <esp_task_wdt.h>
 #include "env.h"
 
 // ========================= FIREBASE =========================
@@ -95,12 +96,15 @@ void setup() {
   fbdo.setResponseSize(1024);
   fbdo.setBSSLBufferSize(1024, 512); // Standard buffers like consumer node
 
-  analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
   lastFlowCalc = millis();
   
+  // Enable Task Watchdog (10 seconds)
+  esp_task_wdt_init(10, true);
+  esp_task_wdt_add(NULL);
+
   Serial.println(F("Gov Node Ready"));
 }
 
@@ -112,6 +116,7 @@ void loop() {
     Serial.println("WiFi Lost. Reconnecting...");
     WiFi.reconnect();
   }
+  esp_task_wdt_reset(); // Feed watchdog
 
   // ---- 1. COMMAND SYNC ----
   if (Firebase.ready() && (millis() - lastCmdCheck > 1500)) {

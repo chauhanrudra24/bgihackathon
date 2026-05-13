@@ -56,14 +56,8 @@ void ICACHE_RAM_ATTR buttonISR() {
 }
 
 volatile unsigned long pulseCount = 0;
-volatile unsigned long lastPulseTime = 0;
 void ICACHE_RAM_ATTR flowPulseISR() {
-  unsigned long now = micros();
-  // RESTORED sensitivity: 500us debounce for 6mm ID sensor
-  if (now - lastPulseTime > 500) {
-    pulseCount++;
-    lastPulseTime = now;
-  }
+  pulseCount++;
 }
 
 // ========================= ALERT LOGGER =========================
@@ -77,15 +71,16 @@ void logAlert(const char* node, const char* type, const char* msg) {
 }
 
 // ========================= EMERGENCY CONTROL =========================
-void setEmergency(bool state) {
+void setEmergency(bool state, const char* source) {
   emergencyActive = state;
-  Serial.printf("SOS EMERGENCY: %s\n", emergencyActive ? "ON" : "OFF");
+  Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
 }
 
-void toggleEmergency() {
-  setEmergency(!emergencyActive);
+void toggleEmergency(const char* source) {
+  setEmergency(!emergencyActive, source);
 }
 
 // ========================= SETUP =========================
@@ -119,12 +114,16 @@ void setup() {
 
   // Hardware init
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  currentValveState = true; // DEFAULT ON
+  digitalWrite(RELAY_PIN, RELAY_ON);
+  
   pinMode(FLOW_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), flowPulseISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
   lastFlowCalc = millis();
 
+  ESP.wdtEnable(WDTO_8S); // Enable hardware watchdog (8 seconds)
+  
   // MPU6050
   Wire.begin(D2, D1);
   if (mpu.begin()) {
@@ -151,8 +150,9 @@ void loop() {
   // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    toggleEmergency();
+    toggleEmergency("PHYSICAL_BUTTON");
   }
+  ESP.wdtFeed(); // Kick the dog
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
@@ -184,10 +184,10 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), false);
       }
       if (j.get(d, F("sosActive")) && d.success) {
-        setEmergency(d.boolValue);
+        setEmergency(d.boolValue, "WEB_DASHBOARD");
       }
       if (j.get(d, F("triggerEmergency")) && d.success) {
-        setEmergency(d.boolValue);
+        setEmergency(d.boolValue, "WEB_DASHBOARD");
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/triggerEmergency"), false);
       }
       // Allow admin to clear tamper remotely and unblock
@@ -220,15 +220,13 @@ void loop() {
     float sec = elapsed / 1000.0;
     if (sec > 0) {
       float hz = pc / sec;
-      float raw = hz / flowCalibration;
-      flowRate = (pc == 0) ? flowRate * 0.7 : (flowRate * 0.7 + raw * 0.3);
-      if (flowRate < 0.05) flowRate = 0;
+      float raw = (hz / 5880.0) * 60.0;
+      flowRate = (pc == 0) ? 0 : (flowRate * 0.5 + raw * 0.5);
     } else {
       flowRate = 0;
     }
 
-    float ppl = flowCalibration * 60.0;
-    float litres = (ppl > 0) ? (float)pc / ppl : 0;
+    float litres = (float)pc / 5880.0; 
 
     if (litres > 0) {
       // KEY RULE: Only bill when valve is OPEN and NOT in emergency mode

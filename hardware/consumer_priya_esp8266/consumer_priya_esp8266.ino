@@ -73,9 +73,9 @@ void logAlert(const char* node, const char* type, const char* msg) {
 }
 
 // ========================= EMERGENCY CONTROL =========================
-void setEmergency(bool state) {
+void setEmergency(bool state, const char* source) {
   emergencyActive = state;
-  Serial.printf("SOS EMERGENCY: %s\n", emergencyActive ? "ON" : "OFF");
+  Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   if (emergencyActive) {
     emergencySeconds = 60;
     lastEmergencyDec = millis();
@@ -83,11 +83,12 @@ void setEmergency(bool state) {
     emergencySeconds = 0;
   }
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
   logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
 }
 
-void toggleEmergency() {
-  setEmergency(!emergencyActive);
+void toggleEmergency(const char* source) {
+  setEmergency(!emergencyActive, source);
 }
 
 // ========================= SETUP =========================
@@ -123,8 +124,10 @@ void setup() {
 
   // Hardware init
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, RELAY_OFF);
+  currentValveState = true; // DEFAULT ON
+  digitalWrite(RELAY_PIN, RELAY_ON);
   attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
+  ESP.wdtEnable(WDTO_8S); // Enable hardware watchdog
 
   // MPU6050
   Wire.begin(D2, D1);
@@ -152,8 +155,9 @@ void loop() {
   // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    toggleEmergency();
+    toggleEmergency("PHYSICAL_BUTTON");
   }
+  ESP.wdtFeed(); // Kick dog
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
@@ -183,10 +187,10 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
       }
       if (j.get(d, F("sosActive")) && d.success) {
-        setEmergency(d.boolValue);
+        setEmergency(d.boolValue, "WEB_DASHBOARD");
       }
       if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
-        toggleEmergency();
+        toggleEmergency("WEB_DASHBOARD");
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
       }
       if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {
