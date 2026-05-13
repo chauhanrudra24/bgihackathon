@@ -275,6 +275,7 @@ const ConsumerCard = ({ title, valveState, onToggleValve, nodeData, nodeId, acco
   const emergencyLitres = nodeData?.emergencyLitres || 0;
   const emergencyActive = nodeData?.emergencyActive || false;
   const valveOpen = nodeData?.valveState || false;
+  const emergencyValue = Number(nodeData?.emergencyValue) || 0;
   
   // Premium Billing
   const baseRate = 12;
