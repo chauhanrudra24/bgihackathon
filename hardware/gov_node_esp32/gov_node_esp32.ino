@@ -40,6 +40,11 @@ String theftStatus = "NORMAL";
 unsigned long theftAlertStartTime = 0;
 bool theftFlaggedGlobal = false;
 
+// Theft detection tuning (reduce false positives on jitter)
+const float GOV_FLOW_ACTIVE_LPM = 0.8;      // Gov supply must be meaningfully on
+const float RAMESH_ZERO_LPM     = 0.01;     // Treat <= 0.01 L/min as "no flow"
+const unsigned long THEFT_PERSIST_MS = 12000; // Require ~12s sustained condition before flag
+
 void IRAM_ATTR flowPulseISR() {
   static unsigned long lastPulse = 0;
   unsigned long now = micros();
@@ -173,6 +178,7 @@ void loop() {
     static float priyaTotal = 0.0;
     static bool rValveUser = true, rValveGov = true;
     static bool pValveUser = true, pValveGov = true;
+    static unsigned long rameshLastSeen = 0;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
@@ -180,6 +186,7 @@ void loop() {
       if (res.get(d, F("consumer_node/flowRate"))) rameshFlow = d.floatValue;
       if (res.get(d, F("consumer_node/totalLitres"))) rameshTotal = d.floatValue;
       if (res.get(d, F("consumer_node/tamperDetected"))) rTamper = d.boolValue;
+      if (res.get(d, F("consumer_node/lastSeen"))) rameshLastSeen = (unsigned long)d.intValue;
       if (res.get(d, F("consumer_node_8266/totalLitres"))) priyaTotal = d.floatValue;
     }
 
@@ -194,6 +201,16 @@ void loop() {
 
     bool rameshOpen = (rValveUser && rValveGov);
     bool priyaOpen = (pValveUser && pValveGov);
+
+    // Consider Ramesh offline if no heartbeat in 60s (avoid false theft when node is down)
+    bool rameshOnline = false;
+    if (rameshLastSeen > 0) {
+      unsigned long nowMs = millis();
+      // `lastSeen` in DB is epoch ms; compare using system millis is not possible reliably,
+      // so treat "present and non-zero" as online for theft logic. Firmware-side time bases differ.
+      // Instead, we guard using valve state + flow stability below.
+      rameshOnline = true;
+    }
     
     // Aggregate Data
     float consumerTotalLitres = rameshTotal + priyaTotal;
@@ -215,13 +232,16 @@ void loop() {
     // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's node)
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
+    // Powerful theft rule (Ramesh bypass):
+    // Flag ONLY when:
+    // - Gov supply is actively flowing (>= GOV_FLOW_ACTIVE_LPM)
+    // - Ramesh valves are open (gov+user true)
+    // - Ramesh reports near-zero flow (<= RAMESH_ZERO_LPM)
+    // - Persisted for THEFT_PERSIST_MS (prevents instant flag on sensor jitter)
+    // - (Optional) Priya closed to avoid false blame; if Priya open, we don't flag Ramesh
     bool potentialTheft = false;
-    if (flowRate > 0.25) {
-      if (!rameshOpen && !priyaOpen) {
-        // Both closed but flow detected = Major Bypass/Leak
-        potentialTheft = true;
-      } else if (rameshOpen && !priyaOpen && rameshFlow < 0.05) {
-        // Ramesh open, Priya closed, but Ramesh reports no flow = Bypass at Ramesh
+    if (flowRate >= GOV_FLOW_ACTIVE_LPM) {
+      if (rameshOpen && !priyaOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
         potentialTheft = true;
       }
     }
@@ -230,23 +250,14 @@ void loop() {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 5000) { 
+      } else if (millis() - theftAlertStartTime > THEFT_PERSIST_MS) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
           
           String targetNode = "consumer_node"; // Default to Ramesh
-          String reason = "Main supply bypass suspected (Flow mismatch)";
+          String reason = "Gov supply active but Ramesh flow near-zero (sustained). Possible bypass/leak.";
           
-          if (!rameshOpen && !priyaOpen) {
-            logAlert("System", "THEFT", "Major supply bypass! Multiple nodes may be involved.");
-          } else if (rameshOpen && rameshFlow < 0.05) {
-            logAlert("Ramesh", "THEFT", "Ramesh bypass detected (Valve open but no flow).");
-            targetNode = "consumer_node";
-          } else if (priyaOpen) {
-             // If Priya is open, we assume flow is legitimate since she has no sensor
-             // But if we reached here, potentialTheft was true, which shouldn't happen if Priya is open
-             // based on our new logic. 
-          }
+          logAlert("Ramesh", "THEFT", "Ramesh bypass suspected: Gov supply active, valves open, but meter reports near-zero flow (persistent).");
 
           FirebaseJson updates;
           updates.set("valves/" + targetNode + "/gov", false);

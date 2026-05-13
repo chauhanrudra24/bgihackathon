@@ -288,33 +288,39 @@ void loop() {
   // ---- 3. TAMPER DETECTION via MPU6050 (every 500ms) ----
   static unsigned long lastMPU = 0;
   static unsigned long movementStart = 0;
+  static float baseMag = 0.0;
   if (mpuInitialized && (millis() - lastMPU > 500)) {
     lastMPU = millis();
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
-    float dx = abs(a.acceleration.x - baseAccelX);
-    float dy = abs(a.acceleration.y - baseAccelY);
-    float dz = abs(a.acceleration.z - baseAccelZ);
-    // Threshold decreased to 1.5 + 500ms persistence for 'Instant' feel
-    if (dx > TAMPER_THRESHOLD || dy > TAMPER_THRESHOLD || dz > TAMPER_THRESHOLD || 
-        dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
+    float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
+    float mag = sqrtf(ax * ax + ay * ay + az * az);
+    if (baseMag <= 0.001f) baseMag = mag;
+
+    float dmag = fabsf(mag - baseMag);
+    bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
+    bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
+
+    if (shock || touch) {
       if (movementStart == 0) movementStart = millis();
-      // Trigger instantly for large shocks, otherwise 300ms for motion
-      if ((millis() - movementStart > 300) || dx > SHOCK_THRESHOLD || dy > SHOCK_THRESHOLD || dz > SHOCK_THRESHOLD) {
-        if (!tamperDetected && (millis() - lastValveActionTime > 3000)) {
+      unsigned long held = millis() - movementStart;
+      if ((shock && held > 60) || (!shock && held > 700)) {
+        if (!tamperDetected && (millis() - lastValveActionTime > 4000)) {
           tamperDetected = true;
           lastTamperTime = millis();
-          logAlert("Priya", "TAMPER", "Human touch or displacement detected! Blocking valve.");
+          logAlert("Priya", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
           Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
         }
       }
     } else {
       movementStart = 0;
     }
-    if (!tamperDetected) {
-      baseAccelX = baseAccelX * 0.95 + a.acceleration.x * 0.05;
-      baseAccelY = baseAccelY * 0.95 + a.acceleration.y * 0.05;
-      baseAccelZ = baseAccelZ * 0.95 + a.acceleration.z * 0.05;
+
+    if (!tamperDetected && movementStart == 0) {
+      baseMag = baseMag * 0.98f + mag * 0.02f;
+      baseAccelX = baseAccelX * 0.98 + ax * 0.02;
+      baseAccelY = baseAccelY * 0.98 + ay * 0.02;
+      baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
     }
   }
 

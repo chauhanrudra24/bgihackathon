@@ -597,6 +597,8 @@ const Dashboard = () => {
   const [popup, setPopup] = useState({ 
     isOpen: false, title: '', message: '', icon: '', onConfirm: null, onCancel: null, confirmText: '', cancelText: '' 
   });
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioCtxRef = useRef(null);
 
   const navigate = useNavigate();
 
@@ -619,6 +621,39 @@ const Dashboard = () => {
 
   const closePopup = () => {
     setPopup(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const enableAlertSound = async () => {
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        audioCtxRef.current = Ctx ? new Ctx() : null;
+      }
+      if (audioCtxRef.current?.state === 'suspended') await audioCtxRef.current.resume();
+      setSoundEnabled(true);
+      toast.success('Alert sound enabled');
+    } catch {
+      setSoundEnabled(false);
+      toast.error('Browser blocked sound. Tap again after interacting.');
+    }
+  };
+
+  const playAlertBeep = () => {
+    const ctx = audioCtxRef.current;
+    if (!soundEnabled || !ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } catch {}
   };
 
   useEffect(() => {
@@ -732,11 +767,8 @@ const Dashboard = () => {
           onConfirm: closePopup
         });
         
-        // Try to play alert sound
-        try { 
-          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/995/995-preview.mp3');
-          audio.play(); 
-        } catch(e) {}
+        // Play sound only after user explicitly enabled it (avoids autoplay blocking)
+        playAlertBeep();
       }
     }
     setLastAlertCount(alertLogs.length);
@@ -1396,6 +1428,20 @@ const Dashboard = () => {
                   <span className="sync-label">NEXT SYNC</span>
                 </div>
                 <button 
+                  onClick={enableAlertSound}
+                  className="reset-btn"
+                  style={{
+                    background: soundEnabled ? 'var(--success-light)' : 'white',
+                    color: soundEnabled ? 'var(--success)' : 'var(--text)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {soundEnabled ? '🔊 Alerts Sound' : '🔇 Enable Sound'}
+                </button>
+                <button
                   onClick={() => {
                     toast.promise(
                       new Promise(resolve => setTimeout(resolve, 800)),
