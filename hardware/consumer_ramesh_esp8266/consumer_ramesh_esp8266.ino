@@ -151,7 +151,15 @@ void setup() {
 // ========================= MAIN LOOP =========================
 void loop() {
 
-  // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
+  // ---- 0. CONNECTION WATCHDOG ----
+  static unsigned long lastWifiCheck = 0;
+  if (WiFi.status() != WL_CONNECTED && (millis() - lastWifiCheck > 2000)) {
+    lastWifiCheck = millis();
+    Serial.println("WiFi Lost. Reconnecting...");
+    WiFi.reconnect();
+  }
+
+  // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
     // IGNORE interrupts for 1.5s after relay toggles to avoid EMI noise
@@ -288,9 +296,10 @@ void loop() {
         baseAccelZ = baseAccelZ * 0.95 + a.acceleration.z * 0.05;
       }
     }
-    // Only flag if flow is significant (>1.0 L/m) AND valve has been closed for > 5s
-    if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 5000)) {
-      if (flowRate > 1.2) {
+    // Only flag if flow is significant (>1.5 L/m) AND valve has been closed for > 8s
+    // Higher threshold (1.5) and longer delay (8s) to avoid false positives from noise
+    if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 8000)) {
+      if (flowRate > 1.5) {
         tamperDetected = true;
         logAlert("Ramesh", "TAMPER", "High flow detected while valve CLOSED! Bypass suspected.");
         Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false); // BLOCK USER

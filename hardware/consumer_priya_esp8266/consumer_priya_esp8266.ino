@@ -152,7 +152,15 @@ void setup() {
 // ========================= MAIN LOOP =========================
 void loop() {
 
-  // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
+  // ---- 0. CONNECTION WATCHDOG ----
+  static unsigned long lastWifiCheck = 0;
+  if (WiFi.status() != WL_CONNECTED && (millis() - lastWifiCheck > 2000)) {
+    lastWifiCheck = millis();
+    Serial.println("WiFi Lost. Reconnecting...");
+    WiFi.reconnect();
+  }
+
+  // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
     // IGNORE interrupts for 1.5s after relay toggles to avoid EMI noise
@@ -253,20 +261,25 @@ void loop() {
   }
 
   // ---- 4. SYNC DATA (every 5s — no flow sensor, less frequent) ----
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
+  if (millis() - sendDataPrevMillis > 5000) {
     sendDataPrevMillis = millis();
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), tamperDetected);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/valveState"), currentValveState);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySeconds);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), 0);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyLitres"), 0);
-    Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node_8266/lastSeen"));
-    Serial.printf("Valve:%s | Tamper:%s | Emg:%s | Heap:%d\n",
-      currentValveState ? "OPEN" : "CLOSED",
-      tamperDetected ? "YES" : "No",
-      emergencyActive ? "ACTIVE" : "Off",
-      ESP.getFreeHeap());
+    
+    if (Firebase.ready()) {
+      Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), tamperDetected);
+      Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/valveState"), currentValveState);
+      Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySeconds);
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), 0);
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyLitres"), 0);
+      Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node_8266/lastSeen"));
+      
+      Serial.printf("Priya Sync OK | Valve:%s | Tamper:%s | Emg:%s\n",
+        currentValveState ? "OPEN" : "CLOSED",
+        tamperDetected ? "YES" : "No",
+        emergencyActive ? "ACTIVE" : "Off");
+    } else {
+      Serial.println("Firebase not ready for Priya sync.");
+    }
   }
 }

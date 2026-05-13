@@ -154,6 +154,8 @@ void loop() {
     // Consolidated Fetch: Get all Ramesh data in ONE network call
     float rameshFlow = 0.0;
     bool rTamper = false;
+    bool rValveUser = true;
+    bool rValveGov = true;
     
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData/consumer_node"))) {
       FirebaseJson &res = fbdo.jsonObject();
@@ -161,6 +163,25 @@ void loop() {
       if (res.get(d, F("flowRate"))) rameshFlow = d.floatValue;
       if (res.get(d, F("tamperDetected"))) rTamper = d.boolValue;
     }
+    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node"))) {
+      FirebaseJson &res = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (res.get(d, F("user"))) rValveUser = d.boolValue;
+      if (res.get(d, F("gov"))) rValveGov = d.boolValue;
+    }
+
+    // Fetch Priya's valve state (Priya has no flow sensor)
+    bool pValveUser = true;
+    bool pValveGov = true;
+    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
+      FirebaseJson &res = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (res.get(d, F("user"))) pValveUser = d.boolValue;
+      if (res.get(d, F("gov"))) pValveGov = d.boolValue;
+    }
+
+    bool rameshOpen = (rValveUser && rValveGov);
+    bool priyaOpen = (pValveUser && pValveGov);
     
     static bool lastRTamper = false;
     if (rTamper && !lastRTamper) {
@@ -170,29 +191,39 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // RULE: If Gov Supply has flow (>0.15) but Consumer shows 0 for > 8s
-    bool consumerValveShouldBeOpen = true;
-    // Check if valve is supposed to be open (Optimized check)
-    if (Firebase.RTDB.getBool(&fbdo, F("valves/consumer_node/user"))) {
-       if (!fbdo.boolData()) consumerValveShouldBeOpen = false;
+    // IMPROVED RULE: 
+    // Theft is flagged IF:
+    // 1. Flow > 0.25 (Main supply active)
+    // 2. AND BOTH valves are closed (Significant Leak/Bypass)
+    // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's node)
+    // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
+
+    bool potentialTheft = false;
+    if (flowRate > 0.25) {
+      if (!rameshOpen && !priyaOpen) {
+        // Both closed but flow detected = Major Bypass/Leak
+        potentialTheft = true;
+      } else if (rameshOpen && !priyaOpen && rameshFlow < 0.05) {
+        // Ramesh open, Priya closed, but Ramesh reports no flow = Bypass at Ramesh
+        potentialTheft = true;
+      }
     }
 
-    if (flowRate > 0.15 && rameshFlow < 0.02) {
+    if (potentialTheft) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 8000) {
+      } else if (millis() - theftAlertStartTime > 10000) { // Increased to 10s for stability
         if (theftStatus != "THEFT FLAGGED") {
-          if (flowRate > 0.4 || !consumerValveShouldBeOpen) { 
-            theftStatus = "THEFT FLAGGED";
-            logAlert("System", "THEFT", "Ramesh node: Main supply bypass suspected. Blocking.");
-            
-            FirebaseJson updates;
-            updates.set("valves/consumer_node/gov", false);
-            updates.set("accounts/consumer_node/theftFlagged", true);
-            updates.set("accounts/consumer_node/theftReason", "Main supply bypass suspected (Flow mismatch)");
-            Firebase.RTDB.updateNode(&fbdo, "/", &updates);
-          }
+          theftStatus = "THEFT FLAGGED";
+          logAlert("System", "THEFT", "Main supply bypass suspected (Flow mismatch)");
+          
+          FirebaseJson updates;
+          // Block Ramesh by default if theft is flagged
+          updates.set("valves/consumer_node/gov", false);
+          updates.set("accounts/consumer_node/theftFlagged", true);
+          updates.set("accounts/consumer_node/theftReason", "Main supply bypass suspected (Flow mismatch)");
+          Firebase.RTDB.updateNode(&fbdo, "/", &updates);
         }
       }
     } else {
