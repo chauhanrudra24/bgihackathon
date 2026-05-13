@@ -951,7 +951,8 @@ const Dashboard = () => {
                   cancelText: "Cancel",
                   onCancel: closePopup,
                   onConfirm: () => {
-                    set(ref(db, `commands/${id}/triggerEmergency`), true);
+                    // Send explicit state to hardware
+                    set(ref(db, `commands/${id}/sosActive`), !isActive);
                     closePopup();
                   }
                 });

@@ -111,8 +111,10 @@ const ConsumerDashboard = () => {
 
 
   const triggerEmergency = () => {
-    if (window.confirm("🆘 Confirm Emergency Water? This will grant a temporary free supply for 1 litre or 1 minute.")) {
-      set(ref(db, `commands/${nodeId}/triggerEmergency`), true);
+    const isActive = myNodeData?.emergencyActive || false;
+    const action = isActive ? "Stop" : "Activate";
+    if (window.confirm(`${action} SOS Emergency Water?`)) {
+      set(ref(db, `commands/${nodeId}/sosActive`), !isActive);
     }
   };
 

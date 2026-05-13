@@ -43,8 +43,8 @@ bool theftFlaggedGlobal = false;
 void IRAM_ATTR flowPulseISR() {
   static unsigned long lastPulse = 0;
   unsigned long now = micros();
-  // Increased to 1ms debounce for fragile sensors
-  if (now - lastPulse > 1000) {
+  // RESTORED sensitivity: 500us debounce
+  if (now - lastPulse > 500) {
     pulseCount++;
     lastPulse = now;
   }
@@ -81,12 +81,15 @@ void setup() {
 
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
-  Firebase.signUp(&config, &auth, "", "");
+  
+  // Anonymous sign-in or use provided credentials
+  // Removed signUp("", "") to avoid INVALID_EMAIL error on some library versions
+  
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
-  fbdo.setResponseSize(1024);
-  fbdo.setBSSLBufferSize(1024, 512);
+  fbdo.setResponseSize(2048);
+  fbdo.setBSSLBufferSize(2048, 1024); // Increased for ESP32 stability
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
@@ -197,11 +200,11 @@ void loop() {
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 10000)) {
     sendDataPrevMillis = millis();
     
-    // Simple averaging for stability
-    long tSum = 0; for(int i=0;i<10;i++){ tSum += analogRead(TURBIDITY_PIN); delay(5); }
+    // Faster averaging to avoid loop delays
+    long tSum = 0; for(int i=0;i<10;i++){ tSum += analogRead(TURBIDITY_PIN); delayMicroseconds(100); }
     float tVolts = (tSum / 10.0) * (3.3 / 4095.0);
     
-    long dSum = 0; for(int i=0;i<10;i++){ dSum += analogRead(TDS_PIN); delay(5); }
+    long dSum = 0; for(int i=0;i<10;i++){ dSum += analogRead(TDS_PIN); delayMicroseconds(100); }
     float dVolts = (dSum / 10.0) * (3.3 / 4095.0);
     float tds = (133.42*dVolts*dVolts*dVolts - 255.86*dVolts*dVolts + 857.39*dVolts) * 0.5;
 

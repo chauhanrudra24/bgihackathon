@@ -59,8 +59,8 @@ volatile unsigned long pulseCount = 0;
 volatile unsigned long lastPulseTime = 0;
 void ICACHE_RAM_ATTR flowPulseISR() {
   unsigned long now = micros();
-  // Increased debounce to 1ms (1000us) for fragile/noisy sensors
-  if (now - lastPulseTime > 1000) {
+  // RESTORED sensitivity: 500us debounce for 6mm ID sensor
+  if (now - lastPulseTime > 500) {
     pulseCount++;
     lastPulseTime = now;
   }
@@ -76,12 +76,16 @@ void logAlert(const char* node, const char* type, const char* msg) {
   Firebase.RTDB.pushJSON(&fbdo, F("alertLogs"), &json);
 }
 
-// ========================= EMERGENCY TOGGLE =========================
-void toggleEmergency() {
-  emergencyActive = !emergencyActive;
+// ========================= EMERGENCY CONTROL =========================
+void setEmergency(bool state) {
+  emergencyActive = state;
   Serial.printf("SOS EMERGENCY: %s\n", emergencyActive ? "ON" : "OFF");
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
-  logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED (button)" : "Emergency DISABLED (button)");
+  logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
+}
+
+void toggleEmergency() {
+  setEmergency(!emergencyActive);
 }
 
 // ========================= SETUP =========================
@@ -111,7 +115,7 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   fbdo.setResponseSize(1024);
-  fbdo.setBSSLBufferSize(1024, 512);
+  fbdo.setBSSLBufferSize(2048, 1024); // Increased for SSL stability
 
   // Hardware init
   pinMode(RELAY_PIN, OUTPUT);
@@ -179,8 +183,11 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), false);
       }
-      if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
-        toggleEmergency();
+      if (j.get(d, F("sosActive")) && d.success) {
+        setEmergency(d.boolValue);
+      }
+      if (j.get(d, F("triggerEmergency")) && d.success) {
+        setEmergency(d.boolValue);
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/triggerEmergency"), false);
       }
       // Allow admin to clear tamper remotely and unblock

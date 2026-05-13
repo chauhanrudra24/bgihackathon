@@ -72,9 +72,9 @@ void logAlert(const char* node, const char* type, const char* msg) {
   Firebase.RTDB.pushJSON(&fbdo, F("alertLogs"), &json);
 }
 
-// ========================= EMERGENCY TOGGLE =========================
-void toggleEmergency() {
-  emergencyActive = !emergencyActive;
+// ========================= EMERGENCY CONTROL =========================
+void setEmergency(bool state) {
+  emergencyActive = state;
   Serial.printf("SOS EMERGENCY: %s\n", emergencyActive ? "ON" : "OFF");
   if (emergencyActive) {
     emergencySeconds = 60;
@@ -83,7 +83,11 @@ void toggleEmergency() {
     emergencySeconds = 0;
   }
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
-  logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED (button)" : "Emergency DISABLED (button)");
+  logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
+}
+
+void toggleEmergency() {
+  setEmergency(!emergencyActive);
 }
 
 // ========================= SETUP =========================
@@ -115,7 +119,7 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   fbdo.setResponseSize(1024);
-  fbdo.setBSSLBufferSize(1024, 512);
+  fbdo.setBSSLBufferSize(2048, 1024); // Increased for SSL stability
 
   // Hardware init
   pinMode(RELAY_PIN, OUTPUT);
@@ -177,6 +181,9 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/reset"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
+      }
+      if (j.get(d, F("sosActive")) && d.success) {
+        setEmergency(d.boolValue);
       }
       if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
         toggleEmergency();
