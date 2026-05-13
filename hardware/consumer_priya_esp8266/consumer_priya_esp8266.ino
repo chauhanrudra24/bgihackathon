@@ -50,9 +50,10 @@ bool  currentValveState = false;
 float flowRate         = 0.0;   // Always 0 (no sensor)
 float totalLitres      = 0.0;   // Always 0 (no sensor)
 float emergencyLitres  = 0.0;   // Always 0 (no sensor)
-int   emergencySeconds = 0;
-unsigned long lastEmergencyDec = 0;
+float emergencyValue   = 0.0;   // Current SOS quota remaining (seconds)
+unsigned long lastEmergencyTick = 0;
 unsigned long lastValveActionTime = 0;
+unsigned long lastControlCheckMs = 0;
 
 // ========================= BUTTON ISR =========================
 volatile bool physicalEmergencyRequested = false;
@@ -79,7 +80,12 @@ void setEmergency(bool state, const char* source) {
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
+  if (emergencyActive) {
+    emergencyValue = 60.0; // 60 seconds quota per activation
+    lastEmergencyTick = millis();
+  }
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencyValue);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -238,7 +244,21 @@ void loop() {
     }
   }
 
-  // Emergency timer logic removed for consistent toggle behavior
+  // ---- 2. EMERGENCY TIME DEDUCTION (every 1s) ----
+  if (emergencyActive && (millis() - lastEmergencyTick >= 1000)) {
+    lastEmergencyTick = millis();
+    emergencyValue -= 1.0;
+    if (emergencyValue <= 0) {
+      emergencyValue = 0;
+      setEmergency(false, "SYSTEM_AUTO_STOP");
+    }
+    // Report remaining time to Firebase every 2s
+    static unsigned long lastValueReport = 0;
+    if (millis() - lastValueReport > 2000) {
+      lastValueReport = millis();
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencyValue);
+    }
+  }
 
   // ---- 3. TAMPER DETECTION via MPU6050 (every 500ms) ----
   static unsigned long lastMPU = 0;

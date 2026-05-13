@@ -16,7 +16,7 @@ const isNodeOnline = (nodeData) => {
 // =========================
 // THEFT ALERT BANNER
 // =========================
-const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference }) => {
+const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference, accounts }) => {
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
@@ -35,12 +35,18 @@ const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference })
   const isAlert = theftStatus === 'ALERT' || theftStatus === 'THEFT FLAGGED';
   const isPending = theftStatus?.startsWith('PENDING_');
   
+  // Find who is flagged
+  const flaggedNodes = Object.entries(accounts || {})
+    .filter(([_, acct]) => acct.theftFlagged)
+    .map(([id]) => id === 'consumer_node' ? 'Ramesh' : 'Priya');
+  const nodeMsg = flaggedNodes.length > 0 ? ` (Suspect: ${flaggedNodes.join(', ')})` : '';
+  
   return (
     <div className={`theft-banner ${isAlert ? 'alert' : 'suspicious'}`} id="theft-alert-banner">
       <div className="theft-banner-icon">{isAlert ? '🚨' : isPending ? '⏳' : '⚠️'}</div>
       <div className="theft-banner-content">
         <h3>
-          {isAlert ? 'THEFT ALERT: Major Water Loss Detected!' : 
+          {isAlert ? `THEFT ALERT: Major Water Loss Detected!${nodeMsg}` : 
            isPending ? `POTENTIAL THEFT DETECTED: Verifying in ${countdown}s...` :
            'SUSPICIOUS: Minor Flow Discrepancy'}
         </h3>
@@ -1361,6 +1367,7 @@ const Dashboard = () => {
             govSupply={govNode.govSupplyLitres}
             consumerTotal={govNode.consumerTotalLitres}
             difference={govNode.flowDifference}
+            accounts={accounts}
           />
 
           {activeTab === 'dashboard' && renderDashboard()}

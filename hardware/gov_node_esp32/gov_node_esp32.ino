@@ -216,16 +216,28 @@ void loop() {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 10000) { // Increased to 10s for stability
+      } else if (millis() - theftAlertStartTime > 10000) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
-          logAlert("System", "THEFT", "Main supply bypass suspected (Flow mismatch)");
           
+          String targetNode = "consumer_node"; // Default to Ramesh
+          String reason = "Main supply bypass suspected (Flow mismatch)";
+          
+          if (!rameshOpen && !priyaOpen) {
+            logAlert("System", "THEFT", "Major supply bypass! Multiple nodes may be involved.");
+          } else if (rameshOpen && rameshFlow < 0.05) {
+            logAlert("Ramesh", "THEFT", "Ramesh bypass detected (Valve open but no flow).");
+            targetNode = "consumer_node";
+          } else if (priyaOpen) {
+             // If Priya is open, we assume flow is legitimate since she has no sensor
+             // But if we reached here, potentialTheft was true, which shouldn't happen if Priya is open
+             // based on our new logic. 
+          }
+
           FirebaseJson updates;
-          // Block Ramesh by default if theft is flagged
-          updates.set("valves/consumer_node/gov", false);
-          updates.set("accounts/consumer_node/theftFlagged", true);
-          updates.set("accounts/consumer_node/theftReason", "Main supply bypass suspected (Flow mismatch)");
+          updates.set("valves/" + targetNode + "/gov", false);
+          updates.set("accounts/" + targetNode + "/theftFlagged", true);
+          updates.set("accounts/" + targetNode + "/theftReason", reason);
           Firebase.RTDB.updateNode(&fbdo, "/", &updates);
         }
       }

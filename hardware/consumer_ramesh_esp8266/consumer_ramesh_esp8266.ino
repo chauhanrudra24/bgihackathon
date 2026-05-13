@@ -42,7 +42,8 @@ bool  tamperDetected   = false;
 bool  currentValveState = false;
 float flowRate         = 0.0;
 float totalLitres      = 0.0;   // Billed usage (only when valve OPEN, not emergency)
-float emergencyLitres  = 0.0;   // Emergency premium usage
+float emergencyLitres  = 0.0;   // Total emergency litres used (all-time)
+float emergencyValue   = 0.0;   // Current SOS quota remaining (L)
 unsigned long lastFlowCalc = 0;
 unsigned long lastValveActionTime = 0;
 float flowCalibration  = 98.0; // F = 98 for 6mm ID pipe
@@ -76,7 +77,11 @@ void logAlert(const char* node, const char* type, const char* msg) {
 void setEmergency(bool state, const char* source) {
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
+  if (emergencyActive) {
+    emergencyValue = 1.0; // 1 Litre quota per activation
+  }
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyValue);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -268,6 +273,12 @@ void loop() {
       // Emergency usage tracked separately (premium billing)
       if (emergencyActive) {
         emergencyLitres += litres;
+        emergencyValue -= litres;
+        if (emergencyValue <= 0) {
+          emergencyValue = 0;
+          setEmergency(false, "SYSTEM_AUTO_STOP");
+        }
+      }
       }
     }
 
