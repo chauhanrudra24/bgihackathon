@@ -8,9 +8,15 @@ import toast from 'react-hot-toast';
 const isNodeOnline = (nodeData) => {
   if (!nodeData || !nodeData.lastSeen) return false;
   const now = Date.now();
-  const lastSeen = nodeData.lastSeen;
+  let lastSeen = nodeData.lastSeen;
+  if (typeof lastSeen === 'string') {
+    const parsed = Number(lastSeen);
+    if (Number.isFinite(parsed)) lastSeen = parsed;
+  }
+  // Firebase timestamps sometimes arrive in seconds; normalize to ms.
+  if (typeof lastSeen === 'number' && lastSeen > 0 && lastSeen < 1e12) lastSeen *= 1000;
   // Increased to 60s to prevent flickering during network jitter or blocking I/O
-  return (now - lastSeen) < 60000; 
+  return (now - lastSeen) < 60000;
 };
 
 // =========================
@@ -449,7 +455,7 @@ const ConsumerCard = React.memo(({ title, valveState, onToggleValve, nodeData, n
       </div>
     </div>
   );
-};
+});
 
 // =========================
 // SETTINGS VIEW
@@ -707,44 +713,10 @@ const Dashboard = () => {
 
 
   // ===== AUTO THEFT DETECTION (with 5s persistence) =====
-  const theftStartTimes = useRef({});
-  useEffect(() => {
-    if (!data || commands.resetAll) return;
-    const govNode = data.gov_node;
-    if (!isNodeOnline(govNode) || govNode.flowRate <= 3.0) {
-      theftStartTimes.current = {}; // Reset all timers if gov flow stops
-      return;
-    }
-
-    CONSUMER_NODES.forEach(({ nodeId, hasSensor }) => {
-      if (!hasSensor) return;
-      const consumerData = data[nodeId];
-      const consumerOnline = isNodeOnline(consumerData);
-      const valve = valves[nodeId];
-      const valveOpen = valve?.gov !== false && valve?.user !== false;
-      const consumerFlow = consumerData?.flowRate ?? 0;
-      const account = accounts[nodeId] || {};
-
-      const isSuspicious = consumerOnline && valveOpen && consumerFlow === 0 && !account.theftFlagged;
-
-      if (isSuspicious) {
-        if (!theftStartTimes.current[nodeId]) {
-          theftStartTimes.current[nodeId] = Date.now();
-        } else {
-          const duration = (Date.now() - theftStartTimes.current[nodeId]) / 1000;
-          if (duration >= 5) {
-            set(ref(db, `accounts/${nodeId}/theftFlagged`), true);
-            set(ref(db, `accounts/${nodeId}/theftReason`), 'Main supply active (>3L/min) but no consumer flow detected (5s persistence)');
-            set(ref(db, `accounts/${nodeId}/theftTime`), Date.now());
-            set(ref(db, `valves/${nodeId}/gov`), false);
-            delete theftStartTimes.current[nodeId]; // Clear after triggering
-          }
-        }
-      } else {
-        delete theftStartTimes.current[nodeId]; // Reset if condition cleared
-      }
-    });
-  }, [data, valves, accounts]);
+  // IMPORTANT:
+  // Theft detection + persistence is handled on the Gov node firmware
+  // (`sensorData/gov_node/theftStatus`). Dashboard should only *display*
+  // the status to avoid false flags during brief sensor/network jitter.
 
   // ===== AUTO BALANCE CHECK =====
   // If balance <= 0, auto-block supply
