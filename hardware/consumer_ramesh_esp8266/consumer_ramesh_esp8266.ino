@@ -264,13 +264,10 @@ void loop() {
     }
 
     float litres = (float)pc / (flowCalibration * 60.0); 
-
     if (litres > 0) {
-      // KEY RULE: Only bill when valve is OPEN and NOT in emergency mode
       if (currentValveState && !emergencyActive) {
         totalLitres += litres;
       }
-      // Emergency usage tracked separately (premium billing)
       if (emergencyActive) {
         emergencyLitres += litres;
         emergencyValue -= litres;
@@ -279,16 +276,14 @@ void loop() {
           setEmergency(false, "SYSTEM_AUTO_STOP");
         }
       }
-      }
     }
 
     // ---- TAMPER DETECTION ----
     bool flowTamper = false;
-    // Flow while valve is CLOSED = bypass attempt
     if (!currentValveState && flowRate > 0.3) {
       flowTamper = true;
     }
-    // MPU tilt/displacement detection (Relaxed threshold + persistence)
+    
     static unsigned long movementStart = 0;
     if (mpuInitialized) {
       sensors_event_t a, g, temp;
@@ -297,7 +292,6 @@ void loop() {
       float dy = abs(a.acceleration.y - baseAccelY);
       float dz = abs(a.acceleration.z - baseAccelZ);
       
-      // Threshold decreased to 1.5 + 500ms persistence for 'Instant' feel
       if (dx > 1.5 || dy > 1.5 || dz > 1.5) {
         if (movementStart == 0) movementStart = millis();
         if (millis() - movementStart > 500 && (millis() - lastValveActionTime > 3000)) { 
@@ -305,26 +299,24 @@ void loop() {
             tamperDetected = true;
             lastTamperTime = millis();
             logAlert("Ramesh", "TAMPER", "Instant motion detected! Valve LOCKED.");
-            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false); // BLOCK USER
+            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
           }
         }
       } else {
         movementStart = 0;
       }
-      // Only update baseline when NOT tampered
       if (!tamperDetected) {
         baseAccelX = baseAccelX * 0.95 + a.acceleration.x * 0.05;
         baseAccelY = baseAccelY * 0.95 + a.acceleration.y * 0.05;
         baseAccelZ = baseAccelZ * 0.95 + a.acceleration.z * 0.05;
       }
     }
-    // Only flag if flow is significant (>1.5 L/m) AND valve has been closed for > 8s
-    // Higher threshold (1.5) and longer delay (8s) to avoid false positives from noise
+
     if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 8000)) {
       if (flowRate > 1.5) {
         tamperDetected = true;
         logAlert("Ramesh", "TAMPER", "High flow detected while valve CLOSED! Bypass suspected.");
-        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false); // BLOCK USER
+        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
       }
     }
     lastFlowCalc = millis();
@@ -341,9 +333,10 @@ void loop() {
     }
   }
 
-  // ---- 4. REALTIME DATA (every 2s — optimized for SSL stability) ----
-  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 2000)) {
-    sendFlowPrevMillis = millis();
+  // ---- 4. REALTIME DATA (every 2s) ----
+  static unsigned long lastRealtimeReport = 0;
+  if (Firebase.ready() && (millis() - lastRealtimeReport > 2000)) {
+    lastRealtimeReport = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/flowRate"), flowRate);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/totalLitres"), totalLitres);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyLitres"), emergencyLitres);
@@ -353,8 +346,9 @@ void loop() {
   }
 
   // ---- 5. HEARTBEAT (every 5s) ----
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000 || sendDataPrevMillis == 0)) {
-    sendDataPrevMillis = millis();
+  static unsigned long lastHeartbeat = 0;
+  if (Firebase.ready() && (millis() - lastHeartbeat > 5000 || lastHeartbeat == 0)) {
+    lastHeartbeat = millis();
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/valveState"), currentValveState);
     Serial.printf("Flow:%.2f | Bill:%.2f | Emg:%.2f | Tamper:%s | Valve:%s | Heap:%d\n",
       flowRate, totalLitres, emergencyLitres,
