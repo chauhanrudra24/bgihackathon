@@ -633,10 +633,28 @@ const Dashboard = () => {
     const accountsRef = ref(db, 'accounts');
     const commandsRef = ref(db, 'commands');
     
+    const mergeSensorData = (prevData, incoming) => {
+      if (!incoming || typeof incoming !== 'object') return prevData;
+      const prevSafe = prevData && typeof prevData === 'object' ? prevData : {};
+      const next = { ...prevSafe };
+      for (const [nodeId, nodePayload] of Object.entries(incoming)) {
+        if (nodePayload && typeof nodePayload === 'object') {
+          const prevNode = prevSafe[nodeId] && typeof prevSafe[nodeId] === 'object' ? prevSafe[nodeId] : {};
+          next[nodeId] = { ...prevNode, ...nodePayload };
+        } else if (nodePayload !== undefined && nodePayload !== null) {
+          // Non-object primitive fields (rare) still overwrite
+          next[nodeId] = nodePayload;
+        }
+        // If Firebase briefly returns null/undefined for a node, keep previous node data.
+      }
+      return next;
+    };
+
     const unsubscribeSensors = onValue(sensorRef, (snapshot) => {
       const newData = snapshot.val();
       if (newData) {
-        setData(prev => ({ ...prev, ...newData })); // Persistent Merge
+        // Deep-merge per node so partial updates don't wipe previous fields and cause 0-flashes.
+        setData(prev => mergeSensorData(prev, newData));
         setErrorMsg('');
       } else {
         setErrorMsg('Connected to Firebase, but sensorData is empty.');
