@@ -121,7 +121,13 @@ const ConsumerDashboard = () => {
       // Optimistic update for myNodeData (though it's usually synced from FB)
       setMyNodeData(prev => ({ ...prev, emergencyActive: !isActive }));
       
-      await set(ref(db, `commands/${nodeId}/sosActive`), !isActive);
+      if (!isActive) {
+        // Firmware listens for `triggerEmergency` to turn SOS on, and `sosActive=false` to force it off.
+        await set(ref(db, `commands/${nodeId}/triggerEmergency`), true);
+        await set(ref(db, `commands/${nodeId}/sosActive`), true);
+      } else {
+        await set(ref(db, `commands/${nodeId}/sosActive`), false);
+      }
       toast.success(`SOS ${!isActive ? 'Activated' : 'Deactivated'}`, { id: toastId });
     } catch (error) {
       toast.error("Failed to trigger SOS", { id: toastId });
