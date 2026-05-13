@@ -80,7 +80,6 @@ void setEmergency(bool state, const char* source) {
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
-  Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/sosActive"), emergencyActive); // SYNC BACK TO COMMANDS
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -213,10 +212,13 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
       }
       if (j.get(d, F("sosActive")) && d.success) {
-        setEmergency(d.boolValue, "WEB_DASHBOARD");
+        bool remoteSos = d.boolValue;
+        if (remoteSos != emergencyActive) {
+          setEmergency(remoteSos, "WEB_DASHBOARD");
+        }
       }
       if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
-        toggleEmergency("WEB_DASHBOARD");
+        if (!emergencyActive) setEmergency(true, "WEB_DASHBOARD");
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
       }
       if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {

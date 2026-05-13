@@ -818,6 +818,7 @@ const Dashboard = () => {
         updates[`valves/${nodeId}/gov`] = true;
         updates[`valves/${nodeId}/user`] = true;
         updates[`commands/${nodeId}/triggerEmergency`] = false;
+        updates[`commands/${nodeId}/sosActive`] = false;
       }
 
       // Perform all updates in one go (more efficient)
@@ -829,7 +830,9 @@ const Dashboard = () => {
       setTimeout(() => {
         const clearCommands = {};
         clearCommands['commands/consumer_node/reset'] = false;
+        clearCommands['commands/consumer_node/sosActive'] = false;
         clearCommands['commands/consumer_node_8266/reset'] = false;
+        clearCommands['commands/consumer_node_8266/sosActive'] = false;
         clearCommands['commands/resetAll'] = false;
         update(ref(db), clearCommands);
       }, 5000);

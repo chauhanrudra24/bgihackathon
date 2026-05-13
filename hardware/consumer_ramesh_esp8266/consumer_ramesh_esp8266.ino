@@ -77,7 +77,6 @@ void setEmergency(bool state, const char* source) {
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
-  Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/sosActive"), emergencyActive); // SYNC BACK TO COMMANDS
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -214,10 +213,13 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), false);
       }
       if (j.get(d, F("sosActive")) && d.success) {
-        setEmergency(d.boolValue, "WEB_DASHBOARD");
+        bool remoteSos = d.boolValue;
+        if (remoteSos != emergencyActive) {
+          setEmergency(remoteSos, "WEB_DASHBOARD");
+        }
       }
-      if (j.get(d, F("triggerEmergency")) && d.success) {
-        setEmergency(d.boolValue, "WEB_DASHBOARD");
+      if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
+        if (!emergencyActive) setEmergency(true, "WEB_DASHBOARD");
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/triggerEmergency"), false);
       }
       // Allow admin to clear tamper remotely and unblock
