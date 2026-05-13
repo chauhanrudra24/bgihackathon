@@ -53,7 +53,6 @@ float emergencyLitres  = 0.0;   // Always 0 (no sensor)
 float emergencyValue   = 0.0;   // Current SOS quota remaining (seconds)
 unsigned long lastEmergencyTick = 0;
 unsigned long lastValveActionTime = 0;
-unsigned long lastControlCheckMs = 0;
 
 // ========================= BUTTON ISR =========================
 volatile bool physicalEmergencyRequested = false;
@@ -212,7 +211,7 @@ void loop() {
       FirebaseJsonData d;
       if (j.get(d, F("reset")) && d.success && d.boolValue) {
         tamperDetected = false; emergencyActive = false;
-        emergencySeconds = 0;
+        emergencyValue = 0;
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/reset"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
@@ -299,7 +298,7 @@ void loop() {
       Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), tamperDetected);
       Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/valveState"), currentValveState);
       Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
-      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencySeconds);
+      Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyValue"), emergencyValue);
       Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/flowRate"), 0);
       Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/totalLitres"), 0);
       Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node_8266/emergencyLitres"), 0);
