@@ -34,6 +34,7 @@ float baseAccelX, baseAccelY, baseAccelZ;
 #define RELAY_OFF HIGH
 #define EMERGENCY_BUTTON_PIN D7
 #define FLOW_SENSOR_PIN D6
+#define EMERGENCY_LED_PIN D5
 
 // ========================= STATE =========================
 bool  emergencyActive  = false;
@@ -77,6 +78,7 @@ void setEmergency(bool state, const char* source) {
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
+  digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
 }
 
@@ -114,6 +116,8 @@ void setup() {
   fbdo.setBSSLBufferSize(2048, 1024); // Increased for SSL stability
 
   // Hardware init
+  pinMode(EMERGENCY_LED_PIN, OUTPUT);
+  digitalWrite(EMERGENCY_LED_PIN, LOW);
   pinMode(RELAY_PIN, OUTPUT);
   currentValveState = true; // DEFAULT ON
   digitalWrite(RELAY_PIN, RELAY_ON);

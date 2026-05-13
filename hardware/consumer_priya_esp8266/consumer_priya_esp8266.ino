@@ -41,6 +41,7 @@ float baseAccelX, baseAccelY, baseAccelZ;
 #define RELAY_ON LOW
 #define RELAY_OFF HIGH
 #define EMERGENCY_BUTTON_PIN D7
+#define EMERGENCY_LED_PIN D5
 
 // ========================= STATE =========================
 bool  emergencyActive  = false;
@@ -85,6 +86,7 @@ void setEmergency(bool state, const char* source) {
   }
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
+  digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
 }
 
@@ -124,6 +126,8 @@ void setup() {
   fbdo.setBSSLBufferSize(2048, 1024); // Increased for SSL stability
 
   // Hardware init
+  pinMode(EMERGENCY_LED_PIN, OUTPUT);
+  digitalWrite(EMERGENCY_LED_PIN, LOW);
   pinMode(RELAY_PIN, OUTPUT);
   currentValveState = true; // DEFAULT ON
   digitalWrite(RELAY_PIN, RELAY_ON);
