@@ -102,7 +102,12 @@ void setup() {
   lastFlowCalc = millis();
   
   // Enable Task Watchdog (10 seconds)
-  esp_task_wdt_init(10, true);
+  esp_task_wdt_config_t twdt_config = {
+      .timeout_ms = 10000,
+      .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+      .trigger_panic = true,
+  };
+  esp_task_wdt_init(&twdt_config);
   esp_task_wdt_add(NULL);
 
   Serial.println(F("Gov Node Ready"));
