@@ -991,14 +991,20 @@ const Dashboard = () => {
                 const isActive = data[id]?.emergencyActive || false;
                 showPopup({
                   title: isActive ? "Stop Emergency" : "Emergency Override",
-                  message: isActive ? `Stop emergency supply for ${name}?` : `Grant emergency water access to ${name}? This will provide 1L of water even if blocked.`,
+                  message: isActive ? `Stop emergency supply for ${name}?` : `Grant emergency water access to ${name}? This will provide 100ml of water even if blocked.`,
                   icon: "🆘",
                   confirmText: isActive ? "Stop Now" : "Grant Access",
                   cancelText: "Cancel",
                   onCancel: closePopup,
                   onConfirm: () => {
-                    // Send explicit state to hardware
-                    set(ref(db, `commands/${id}/sosActive`), !isActive);
+                    if (isActive) {
+                      // STOP command
+                      set(ref(db, `commands/${id}/sosActive`), false);
+                    } else {
+                      // START command (Pulse + State)
+                      set(ref(db, `commands/${id}/triggerEmergency`), true);
+                      set(ref(db, `commands/${id}/sosActive`), true);
+                    }
                     closePopup();
                   }
                 });

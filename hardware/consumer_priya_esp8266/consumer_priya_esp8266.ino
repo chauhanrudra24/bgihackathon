@@ -132,6 +132,7 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   currentValveState = true; // DEFAULT ON
   digitalWrite(RELAY_PIN, RELAY_ON);
+  pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(EMERGENCY_BUTTON_PIN), buttonISR, FALLING);
 
   // MPU6050
@@ -176,11 +177,15 @@ void loop() {
   // ---- 0b. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    // IGNORE interrupts for 1.5s after relay toggles to avoid EMI noise
-    if (millis() - lastValveActionTime > 1500) {
-      toggleEmergency("PHYSICAL_BUTTON");
-    } else {
-      Serial.println(F("Ignored noisy button interrupt during relay switch."));
+    // Debounce & EMI Check: Wait 50ms and check if button is STILL pressed
+    delay(50);
+    if (digitalRead(EMERGENCY_BUTTON_PIN) == LOW) {
+      // IGNORE interrupts for 2.0s after relay toggles to avoid EMI noise
+      if (millis() - lastValveActionTime > 2000) {
+        toggleEmergency("PHYSICAL_BUTTON");
+      } else {
+        Serial.println(F("Ignored noisy button interrupt during relay switch."));
+      }
     }
   }
 
@@ -216,15 +221,12 @@ void loop() {
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), false);
       }
-      if (j.get(d, F("sosActive")) && d.success) {
-        bool remoteSos = d.boolValue;
-        if (remoteSos != emergencyActive) {
-          setEmergency(remoteSos, "WEB_DASHBOARD");
-        }
-      }
       if (j.get(d, F("triggerEmergency")) && d.success && d.boolValue) {
         if (!emergencyActive) setEmergency(true, "WEB_DASHBOARD");
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/triggerEmergency"), false);
+      }
+      if (j.get(d, F("sosActive")) && d.success && !d.boolValue) {
+        if (emergencyActive) setEmergency(false, "WEB_DASHBOARD");
       }
       if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {
         tamperDetected = false;
