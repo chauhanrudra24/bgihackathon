@@ -78,13 +78,9 @@ void logAlert(const char* node, const char* type, const char* msg) {
 void setEmergency(bool state, const char* source) {
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
-  if (emergencyActive) {
-    emergencySeconds = 60;
-    lastEmergencyDec = millis();
-  } else {
-    emergencySeconds = 0;
-  }
+  
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/sosActive"), emergencyActive); // SYNC BACK TO COMMANDS
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node_8266/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Priya", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -223,16 +219,7 @@ void loop() {
     }
   }
 
-  // ---- 2. EMERGENCY TIMER (countdown) ----
-  if (emergencyActive && (millis() - lastEmergencyDec >= 1000)) {
-    lastEmergencyDec = millis();
-    emergencySeconds--;
-    if (emergencySeconds <= 0) {
-      emergencySeconds = 0;
-      emergencyActive = false;
-      Serial.println(F("Emergency timer finished."));
-    }
-  }
+  // Emergency timer logic removed for consistent toggle behavior
 
   // ---- 3. TAMPER DETECTION via MPU6050 (every 500ms) ----
   static unsigned long lastMPU = 0;
@@ -244,14 +231,14 @@ void loop() {
     float dx = abs(a.acceleration.x - baseAccelX);
     float dy = abs(a.acceleration.y - baseAccelY);
     float dz = abs(a.acceleration.z - baseAccelZ);
-    // Threshold increased to 3.0 + 1.5s persistence
-    if (dx > 3.0 || dy > 3.0 || dz > 3.0) {
+    // Threshold decreased to 1.5 + 500ms persistence for 'Instant' feel
+    if (dx > 1.5 || dy > 1.5 || dz > 1.5) {
       if (movementStart == 0) movementStart = millis();
-      if (millis() - movementStart > 1500) {
+      if (millis() - movementStart > 500) {
         if (!tamperDetected) {
           tamperDetected = true;
           lastTamperTime = millis();
-          logAlert("Priya", "TAMPER", "Persistent motion detected! Valve LOCKED.");
+          logAlert("Priya", "TAMPER", "Instant motion detected! Valve LOCKED.");
           Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
         }
       }

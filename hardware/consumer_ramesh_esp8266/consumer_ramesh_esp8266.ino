@@ -77,6 +77,7 @@ void setEmergency(bool state, const char* source) {
   emergencyActive = state;
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
+  Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/sosActive"), emergencyActive); // SYNC BACK TO COMMANDS
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -266,14 +267,14 @@ void loop() {
       float dy = abs(a.acceleration.y - baseAccelY);
       float dz = abs(a.acceleration.z - baseAccelZ);
       
-      // Threshold increased from 1.5 to 3.0 to avoid vibration triggers
-      if (dx > 3.0 || dy > 3.0 || dz > 3.0) {
+      // Threshold decreased to 1.5 + 500ms persistence for 'Instant' feel
+      if (dx > 1.5 || dy > 1.5 || dz > 1.5) {
         if (movementStart == 0) movementStart = millis();
-        if (millis() - movementStart > 2000 && (millis() - lastValveActionTime > 5000)) { // Must be moving for 2s, ignore mechanical shock from valve
+        if (millis() - movementStart > 500 && (millis() - lastValveActionTime > 3000)) { 
           if (!tamperDetected) {
             tamperDetected = true;
             lastTamperTime = millis();
-            logAlert("Ramesh", "TAMPER", "Persistent motion detected! Valve LOCKED.");
+            logAlert("Ramesh", "TAMPER", "Instant motion detected! Valve LOCKED.");
             Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false); // BLOCK USER
           }
         }

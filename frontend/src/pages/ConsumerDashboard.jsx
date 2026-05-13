@@ -340,7 +340,27 @@ const ConsumerDashboard = () => {
           </button>
         </div>
 
-        {/* Tamper Alert Banner */}
+        {/* Offline Alert Banner */}
+        {!myNodeOnline && (
+          <div className="theft-banner alert" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #4b5563, #1f2937)' }}>
+            <div className="theft-banner-icon">🔌</div>
+            <div className="theft-banner-content">
+              <h3>HARDWARE OFFLINE</h3>
+              <p>Connection to your smart meter has been lost. Controls are disabled until the device reconnects to Wi-Fi.</p>
+            </div>
+          </div>
+        )}
+
+        {/* SOS Warning Banner */}
+        {emergencyActive && myNodeOnline && (
+          <div className="theft-banner alert" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
+            <div className="theft-banner-icon">🆘</div>
+            <div className="theft-banner-content">
+              <h3>EMERGENCY SUPPLY ACTIVE</h3>
+              <p>You have manually triggered the emergency override. Normal billing is suspended and premium emergency supply is active.</p>
+            </div>
+          </div>
+        )}
         {tamperDetected && myNodeOnline && (
           <div className="theft-banner alert" style={{ marginBottom: '2rem' }}>
             <div className="theft-banner-icon">🚨</div>
@@ -362,16 +382,6 @@ const ConsumerDashboard = () => {
           </div>
         )}
 
-        {/* Emergency Supply Alert */}
-        {emergencyActive && (
-          <div className="theft-banner alert" style={{ marginBottom: '2rem', background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
-            <div className="theft-banner-icon">🆘</div>
-            <div className="theft-banner-content">
-              <h3>EMERGENCY SUPPLY ACTIVE</h3>
-              <p>You have been granted temporary water access. Remaining: <strong>{user.hasSensor !== false ? `${emergencyValue.toFixed(2)}L` : `${Math.floor(emergencyValue)}s`}</strong></p>
-            </div>
-          </div>
-        )}
 
         {/* Zero Balance Alert */}
         {balance <= 0 && !account.theftFlagged && !emergencyActive && (
