@@ -51,6 +51,7 @@ float totalLitres      = 0.0;   // Always 0 (no sensor)
 float emergencyLitres  = 0.0;   // Always 0 (no sensor)
 int   emergencySeconds = 0;
 unsigned long lastEmergencyDec = 0;
+unsigned long lastValveActionTime = 0;
 
 // ========================= BUTTON ISR =========================
 volatile bool physicalEmergencyRequested = false;
@@ -154,7 +155,12 @@ void loop() {
   // ---- 0. EMERGENCY BUTTON (ISR-driven, instant) ----
   if (physicalEmergencyRequested) {
     physicalEmergencyRequested = false;
-    toggleEmergency("PHYSICAL_BUTTON");
+    // IGNORE interrupts for 1.5s after relay toggles to avoid EMI noise
+    if (millis() - lastValveActionTime > 1500) {
+      toggleEmergency("PHYSICAL_BUTTON");
+    } else {
+      Serial.println(F("Ignored noisy button interrupt during relay switch."));
+    }
   }
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
@@ -168,8 +174,13 @@ void loop() {
       bool gov = true, usr = true;
       if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
       if (j.get(d, F("user")) && d.success) usr = d.boolValue;
-      currentValveState = (gov && usr && !tamperDetected) || emergencyActive;
-      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+      bool newState = (gov && usr && !tamperDetected) || emergencyActive;
+      if (newState != currentValveState) {
+        currentValveState = newState;
+        digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+        lastValveActionTime = millis();
+        Serial.printf("Priya Relay switched: %s\n", currentValveState ? "OPEN" : "CLOSED");
+      }
     }
     yield();
 
