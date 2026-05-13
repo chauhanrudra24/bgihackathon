@@ -82,14 +82,15 @@ void setup() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   
-  // Anonymous sign-in or use provided credentials
-  // Removed signUp("", "") to avoid INVALID_EMAIL error on some library versions
+  // Restore signUp to fix the -127 "missing credentials" error.
+  // Using "" for anonymous login. Ensure Anonymous Auth is enabled in Firebase Console.
+  Firebase.signUp(&config, &auth, "", "");
   
   config.token_status_callback = tokenStatusCallback;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
   fbdo.setResponseSize(2048);
-  fbdo.setBSSLBufferSize(2048, 1024); // Increased for ESP32 stability
+  fbdo.setBSSLBufferSize(2048, 1024);
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
