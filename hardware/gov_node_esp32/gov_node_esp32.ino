@@ -40,9 +40,9 @@ String theftStatus = "NORMAL";
 unsigned long theftAlertStartTime = 0;
 bool theftFlaggedGlobal = false;
 
-// Theft detection tuning
-const float GOV_FLOW_ACTIVE_LPM = 0.5;
-const float RAMESH_ZERO_LPM = 0.01; // Even 0.01 L/min is "Flowing" (Don't mark)
+// Theft detection tuning (Binary Flow Rule)
+const float GOV_FLOW_ACTIVE_LPM = 0.01; // Any flow counts as active
+const float RAMESH_ZERO_LPM     = 0.01; // Noise floor for consumer
 const unsigned long THEFT_PERSIST_MS = 5000;
 
 static float jsonToFloat(FirebaseJsonData &d) {
@@ -268,21 +268,21 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // SIMPLE THEFT LOGIC: 
-    // If Gov Node is detecting flow (>0.1 L/min) 
-    // AND Ramesh meter is COMPLTLY 0 (or <0.01 noise floor) 
+    // NEW BINARY THEFT LOGIC: 
+    // If Gov Node detects ANY flow (>0.01 L/min) 
+    // AND Ramesh meter is COMPLTLY 0 (<0.01 noise floor) 
     // for 5 seconds -> Flag as Theft.
-    bool potentialTheft = (flowRate > 0.1 && rameshFlow < 0.01);
+    bool potentialTheft = (flowRate > GOV_FLOW_ACTIVE_LPM && rameshFlow < RAMESH_ZERO_LPM);
 
     if (potentialTheft) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-        Serial.println(F("THEFT SUSPECTED: Timer started."));
-      } else if (millis() - theftAlertStartTime > 5000) { 
+        Serial.println(F("THEFT SUSPECTED: Timer started (Gov > 0, Ramesh == 0)."));
+      } else if (millis() - theftAlertStartTime > THEFT_PERSIST_MS) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
-          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s).";
+          String reason = "Main supply active but no consumer flow detected (Persistent 5s).";
           logAlert("Ramesh", "THEFT", reason.c_str());
 
           FirebaseJson updates;
