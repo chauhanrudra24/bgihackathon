@@ -265,7 +265,6 @@ void loop() {
       Serial.printf("Priya Valve Logic -> %s (Gov:%d, Usr:%d, Tamper:%d, SOS:%d)\n", 
                     currentValveState ? "OPEN" : "CLOSED", gov, usr, tamperDetected, emergencyActive);
     }
-  }
     yield();
   }
 
