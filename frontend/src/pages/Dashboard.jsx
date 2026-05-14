@@ -268,7 +268,7 @@ const NodeCard = ({ title, nodeData, online: onlineOverride }) => {
 // CONSUMER VALVE + FLOW CARD
 // =========================
 // Memoized to prevent full-page re-render flicker during WebSocket heartbeats
-const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper }) => {
+const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId, account, onBlockToggle, onToggleEmergency, onClearTamper, onEditBalance }) => {
   const online = isNodeOnline(nodeData);
   const tamper = nodeData?.tamperDetected || false;
   const theftFlagged = account?.theftFlagged || false;
@@ -336,12 +336,17 @@ const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId,
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <span style={{ 
+          <span 
+            onClick={onEditBalance}
+            title="Click to recharge balance"
+            style={{ 
+            cursor: 'pointer',
             padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.7rem', fontWeight: 700,
             background: balance > 100 ? 'var(--success-light)' : balance > 0 ? 'var(--warning-light)' : 'var(--danger-light)',
-            color: balance > 100 ? 'var(--success)' : balance > 0 ? 'var(--warning)' : 'var(--danger)'
+            color: balance > 100 ? 'var(--success)' : balance > 0 ? 'var(--warning)' : 'var(--danger)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
           }}>
-            ₹{balance.toFixed(0)}
+            ₹{balance.toFixed(0)} ➕
           </span>
           <span className={`status ${online ? (tamper || theftFlagged ? 'dirty' : '') : 'offline'}`} style={{
             padding: '0.25rem 0.75rem',
@@ -997,6 +1002,30 @@ const Dashboard = () => {
     }
   };
 
+  const handleEditBalance = (nodeId, currentBalance, name) => {
+    const amountStr = window.prompt(`Enter amount to recharge for ${name} (current balance: ₹${currentBalance.toFixed(2)}):`);
+    if (amountStr === null) return;
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Invalid amount. Recharge cancelled.");
+      return;
+    }
+    const newBalance = currentBalance + amount;
+    const toastId = toast.loading(`Recharging ₹${amount} for ${name}...`);
+    
+    set(ref(db, `accounts/${nodeId}/balance`), parseFloat(newBalance.toFixed(2)))
+      .then(() => {
+        toast.success(`Successfully recharged ₹${amount}`, { id: toastId });
+        const account = accounts[nodeId] || {};
+        // Auto-unblock if they were blocked strictly due to zero balance
+        if (account.blocked && !account.theftFlagged) {
+          set(ref(db, `accounts/${nodeId}/blocked`), false);
+          set(ref(db, `valves/${nodeId}/gov`), true);
+        }
+      })
+      .catch(err => toast.error("Recharge failed: " + err.message, { id: toastId }));
+  };
+
   const handleToggleValve = async (nodeId, currentState) => {
     const newState = !currentState;
     const toastId = toast.loading(newState ? "Opening valve..." : "Closing valve...");
@@ -1167,6 +1196,7 @@ const Dashboard = () => {
                   toast.success(`SOS Started for ${name}`);
                 }
               }}
+              onEditBalance={() => handleEditBalance(nodeId, accounts[nodeId]?.balance ?? 500, name)}
             />
           ))}
         </div>
@@ -1464,8 +1494,11 @@ const Dashboard = () => {
 
                   </td>
                   <td>
-                    <button className="reset-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => setActiveTab('dashboard')}>
+                    <button className="reset-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', marginRight: '0.5rem' }} onClick={() => setActiveTab('dashboard')}>
                       View Live
+                    </button>
+                    <button className="recharge-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer' }} onClick={() => handleEditBalance(consumer.nodeId, acct.balance ?? 500, consumer.name)}>
+                      Recharge
                     </button>
                   </td>
                 </tr>
