@@ -266,7 +266,6 @@ void loop() {
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
           String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s). Bypass suspected.";
-          
           logAlert("Ramesh", "THEFT", reason.c_str());
 
           FirebaseJson updates;
@@ -277,11 +276,15 @@ void loop() {
         }
       }
     } else {
+      // RESET COUNTDOWN INSTANTLY if flow resumes
+      if (theftAlertStartTime > 0) {
+        Serial.println(F("Theft countdown ABORTED: Consumer flow detected."));
+      }
       theftAlertStartTime = 0;
-      if (theftStatus != "THEFT FLAGGED") theftStatus = "NORMAL";
+      if (theftStatus == "PENDING_ALERT") theftStatus = "NORMAL";
     }
 
-    // Batch Update Status
+    // Batch Update Status (Telemetery)
     FirebaseJson statusUpdates;
     statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
     statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
@@ -290,11 +293,12 @@ void loop() {
     Firebase.RTDB.updateNode(&fbdo, "/", &statusUpdates);
   }
 
-  // ---- 4. DATA SYNC ----
-  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 2000)) {
+  // ---- 4. DATA SYNC (Increased Frequency for responsiveness) ----
+  if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000)) {
     sendFlowPrevMillis = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), flowRate);
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
+    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"), theftStatus);
   }
 
   // ---- 5. WATER QUALITY (every 10s) ----
