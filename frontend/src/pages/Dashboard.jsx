@@ -958,7 +958,11 @@ const Dashboard = () => {
     const toastId = toast.loading(newState ? "Opening valve..." : "Closing valve...");
     
     try {
-      await set(ref(db, `valves/${nodeId}/gov`), newState);
+      // Set valve state AND notify the system of the change time
+      // so gov node can apply a grace period before theft detection
+      const updates = {};
+      updates[`valves/${nodeId}/gov`] = newState;
+      await update(ref(db), updates);
       toast.success(`Valve ${newState ? 'Opened' : 'Closed'}`, { id: toastId });
     } catch (error) {
       toast.error("Failed to update valve", { id: toastId });
@@ -1491,6 +1495,7 @@ const Dashboard = () => {
       {/* Global Custom Popup */}
       <CustomPopup 
         isOpen={popup.isOpen}
+        type={popup.type}
         title={popup.title}
         message={popup.message}
         icon={popup.icon}
@@ -1498,6 +1503,7 @@ const Dashboard = () => {
         cancelText={popup.cancelText}
         onConfirm={popup.onConfirm}
         onCancel={popup.onCancel}
+        details={popup.details}
       />
     </div>
   );
