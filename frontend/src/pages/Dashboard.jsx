@@ -1063,8 +1063,13 @@ const Dashboard = () => {
               onToggleValve={() => handleToggleValve(nodeId, valves[nodeId]?.gov ?? true)}
               onBlockToggle={() => handleBlockToggle(nodeId)}
               onClearTamper={(id) => {
-                set(ref(db, `commands/${id}/clearTamper`), true);
-                showPopup({ title: 'Tamper Cleared', message: `Tamper flag cleared for ${name}. MPU baseline recalibrated.`, icon: '✅', onConfirm: closePopup });
+                const updates = {};
+                updates[`commands/${id}/clearTamper`] = true;
+                updates[`sensorData/${id}/tamperDetected`] = false;
+                updates[`valves/${id}/gov`] = true; // Unblock automatically
+                updates[`accounts/${id}/theftFlagged`] = false; // Also clear any associated theft flags
+                update(ref(db), updates);
+                showPopup({ title: 'Tamper Cleared', message: `Tamper flag cleared for ${name}. Valve unblocked and MPU baseline recalibrated.`, icon: '✅', onConfirm: closePopup });
               }}
               onToggleEmergency={(id, name) => {
                 const isActive = data[id]?.emergencyActive || false;

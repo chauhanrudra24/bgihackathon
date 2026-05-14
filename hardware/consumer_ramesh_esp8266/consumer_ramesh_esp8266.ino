@@ -27,8 +27,8 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
-const float TAMPER_THRESHOLD = 0.3; // Ultra-sensitive for instant touch detection
-const float SHOCK_THRESHOLD = 1.2;  // Immediate trigger on physical shock
+const float TAMPER_THRESHOLD = 0.2; // Max sensitivity for instant vibration detection
+const float SHOCK_THRESHOLD = 0.8;  // Instant trigger on physical touch
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3
@@ -225,11 +225,31 @@ void loop() {
     // ISR now only sets a flag; we handle logic here for stability
   }
 
-  // ---- 0c. TAMPER INDICATOR (Blink SOS LED until unblocked) ----
+  // ---- 0a. HIGH-PRIORITY TAMPER CHECK (Instant & Constant) ----
+  if (mpuInitialized) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
+    float deltaX = abs(ax - baseAccelX);
+    float deltaY = abs(ay - baseAccelY);
+    float deltaZ = abs(az - baseAccelZ);
+
+    if (!tamperDetected) {
+      if (deltaX > TAMPER_THRESHOLD || deltaY > TAMPER_THRESHOLD || deltaZ > TAMPER_THRESHOLD) {
+        tamperDetected = true;
+        Serial.println(F("!! INSTANT TAMPER DETECTED !!"));
+        // Immediate Reporting
+        Firebase.RTDB.setBoolAsync(&fbdo, F("sensorData/consumer_node/tamperDetected"), true);
+        logAlert("Ramesh", "TAMPER", "Instant physical interference detected! Supply blocked.");
+      }
+    }
+  }
+
+  // ---- 0b. TAMPER INDICATOR (Blink SOS LED until unblocked) ----
   static unsigned long lastTamperBlink = 0;
   static bool tamperLedState = false;
   if (tamperDetected) {
-    if (millis() - lastTamperBlink > 200) {
+    if (millis() - lastTamperBlink > 150) { // Faster blink for alert
       lastTamperBlink = millis();
       tamperLedState = !tamperLedState;
       digitalWrite(EMERGENCY_LED_PIN, tamperLedState ? HIGH : LOW);
@@ -238,6 +258,8 @@ void loop() {
     // Normal behavior: LED shows SOS state
     digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   }
+
+  // ---- 0c. EMERGENCY BUTTON (2s Long Press to Start, Short Press to Stop) ----
 
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
@@ -335,57 +357,7 @@ void loop() {
       }
     }
 
-    // ---- TAMPER DETECTION ----
-    bool flowTamper = false;
-    if (!currentValveState && flowRate > 0.3) flowTamper = true;
-
-    // MPU algorithm:
-    // - Use magnitude delta (less axis-noise sensitive)
-    // - Require sustained "touch" for ~700ms, or instant for large shocks
-    static unsigned long movementStart = 0;
-    static float baseMag = 0.0;
-    if (mpuInitialized) {
-      sensors_event_t a, g, temp;
-      mpu.getEvent(&a, &g, &temp);
-      float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
-      float mag = sqrtf(ax * ax + ay * ay + az * az);
-      if (baseMag <= 0.001f) baseMag = mag;
-
-      float dmag = fabsf(mag - baseMag);
-      bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
-      bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
-
-      if (shock || touch) {
-        if (movementStart == 0) movementStart = millis();
-        unsigned long held = millis() - movementStart;
-        if ((shock && held > 60) || (!shock && held > 700)) {
-          if (!tamperDetected && (millis() - lastValveActionTime > 4000)) {
-            tamperDetected = true;
-            lastTamperTime = millis();
-            logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
-            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-          }
-        }
-      } else {
-        movementStart = 0;
-      }
-
-      // Baseline adapts slowly only when stable (reduces noise false triggers)
-      if (!tamperDetected && movementStart == 0) {
-        baseMag = baseMag * 0.98f + mag * 0.02f;
-        baseAccelX = baseAccelX * 0.98 + ax * 0.02;
-        baseAccelY = baseAccelY * 0.98 + ay * 0.02;
-        baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
-      }
-    }
-
-    if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 8000)) {
-      if (flowRate > 1.5) {
-        tamperDetected = true;
-        logAlert("Ramesh", "TAMPER", "High flow detected while valve CLOSED! Bypass suspected.");
-        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-      }
-    }
+    // (Redundant check removed, handled at top of loop for instant response)
     lastFlowCalc = millis();
     yield();
   }
