@@ -19,6 +19,15 @@ const isNodeOnline = (nodeData) => {
   return (now - lastSeen) < 60000;
 };
 
+const formatVolume = (litres) => {
+  const val = litres || 0;
+  if (val < 1) {
+    return `${(val * 1000).toFixed(0)} ml`;
+  }
+  return `${val.toFixed(3)} L`;
+};
+
+
 // =========================
 // THEFT ALERT BANNER
 // =========================
@@ -145,9 +154,10 @@ const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
           <div className="flow-unit">L/min</div>
         </div>
         <div className="flow-total">
-          <div className="flow-total-value">{(totalLitres || 0).toFixed(2)}</div>
-          <div className="flow-total-label">Total Litres</div>
+          <div className="flow-total-value">{formatVolume(totalLitres)}</div>
+          <div className="flow-total-label">Volume Processed</div>
         </div>
+
       </div>
       {flowRate > 0 && (
         <div className="flow-active-indicator">
@@ -384,9 +394,9 @@ const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId,
           <div className="consumer-flow-item" style={{ background: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius-md)', padding: '0.5rem' }}>
             <span className="consumer-flow-label" style={{ color: 'var(--danger)', fontWeight: 700 }}>🆘 SOS Remaining</span>
             <span className="consumer-flow-value" style={{ color: 'var(--danger)' }}>
-              {hasSensor ? `${emergencyValue.toFixed(2)}` : `${Math.floor(emergencyValue)}`}
-              <small>{hasSensor ? 'L' : 'sec'}</small>
+              {hasSensor ? formatVolume(emergencyValue) : `${Math.floor(emergencyValue)} sec`}
             </span>
+
           </div>
         )}
         <div className="consumer-flow-item">
@@ -396,15 +406,16 @@ const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId,
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Billed Usage</span>
           <span className="consumer-flow-value">
-            {valveOpen ? (nodeData?.totalLitres || 0).toFixed(3) : <span style={{color:'var(--text-muted)', fontSize:'0.8rem'}}>Valve OFF</span>}
-            {valveOpen && <small> L</small>}
+            {valveOpen ? formatVolume(nodeData?.totalLitres) : <span style={{color:'var(--text-muted)', fontSize:'0.8rem'}}>Valve OFF</span>}
           </span>
+
         </div>
         <div className="consumer-flow-item" style={{ background: emergencyLitres > 0 ? 'rgba(239, 68, 68, 0.08)' : 'transparent' }}>
           <span className="consumer-flow-label">🆘 Emergency</span>
           <span className="consumer-flow-value" style={{ color: emergencyLitres > 0 ? 'var(--danger)' : 'inherit' }}>
-            {emergencyLitres.toFixed(3)} <small>L (₹{emergencyCost.toFixed(0)})</small>
+            {formatVolume(emergencyLitres)} <small>(₹{emergencyCost.toFixed(0)})</small>
           </span>
+
         </div>
         <div className="consumer-flow-item">
           <span className="consumer-flow-label">Valve</span>
@@ -994,21 +1005,24 @@ const Dashboard = () => {
         <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
           <div className="card stat-card supply">
             <h3>Total Supply</h3>
-            <div className="value">{(govNode.govSupplyLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className="value">{formatVolume(govNode.govSupplyLitres)}</div>
             <div className="status">FROM PLANT</div>
           </div>
+
           <div className="card stat-card consumption">
             <h3>Total Consumed</h3>
-            <div className="value">{(govNode.consumerTotalLitres || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className="value">{formatVolume(govNode.consumerTotalLitres)}</div>
             <div className="status">BY HOMES</div>
           </div>
+
           <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
             <h3>Unaccounted</h3>
-            <div className="value">{(govNode.flowDifference || 0).toFixed(1)}<span className="unit">L</span></div>
+            <div className="value">{formatVolume(govNode.flowDifference)}</div>
             <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
               {theftStatus}
             </div>
           </div>
+
         </div>
       </div>
 
@@ -1267,22 +1281,25 @@ const Dashboard = () => {
               </tr>
               <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Plant Supply</td>
-                <td>{(govNode.govSupplyLitres || 0).toFixed(2)}</td>
-                <td>L</td>
+                <td>{formatVolume(govNode.govSupplyLitres)}</td>
+                <td>--</td>
                 <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
               </tr>
+
               <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Consumer Usage</td>
-                <td>{(govNode.consumerTotalLitres || 0).toFixed(2)}</td>
-                <td>L</td>
+                <td>{formatVolume(govNode.consumerTotalLitres)}</td>
+                <td>--</td>
                 <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
               </tr>
+
               <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Unaccounted Loss</td>
-                <td>{(govNode.flowDifference || 0).toFixed(2)}</td>
-                <td>L</td>
+                <td>{formatVolume(govNode.flowDifference)}</td>
+                <td>--</td>
                 <td><span className={`status ${govNode.flowDifference > 1.0 ? 'dirty' : ''}`} style={{ fontSize: '0.6rem' }}>{govNode.flowDifference > 1.0 ? 'LOSS DETECTED' : 'STABLE'}</span></td>
               </tr>
+
               <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Turbidity Sensor</td>
                 <td>{(govNode.turbidityVoltage || 0).toFixed(2)}</td>
@@ -1369,8 +1386,9 @@ const Dashboard = () => {
                       💧 <strong>{(nodeData.flowRate || 0).toFixed(1)}</strong> L/min
                     </div>
                     <div style={{ fontSize: '0.85rem' }}>
-                      📊 <strong>{(nodeData.totalLitres || 0).toFixed(1)}</strong> Total Litres
+                      📊 <strong>{formatVolume(nodeData.totalLitres)}</strong> Total Usage
                     </div>
+
                   </td>
                   <td>
                     <button className="reset-btn" style={{ padding: '0.4rem 0.8rem', fontSize: '0.75rem' }} onClick={() => setActiveTab('dashboard')}>

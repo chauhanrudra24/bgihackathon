@@ -4,6 +4,15 @@ import { ref, onValue, set, update } from 'firebase/database';
 import { db } from '../firebase';
 import toast from 'react-hot-toast';
 
+const formatVolume = (litres) => {
+  const val = litres || 0;
+  if (val < 1) {
+    return `${(val * 1000).toFixed(0)} ml`;
+  }
+  return `${val.toFixed(3)} L`;
+};
+
+
 const ConsumerDashboard = () => {
   const [govData, setGovData] = useState(null);
   const [myNodeData, setMyNodeData] = useState(null);
@@ -341,8 +350,9 @@ const ConsumerDashboard = () => {
             <h3>💳 Prepaid Water Balance</h3>
             <div className="balance-value">₹{balance.toFixed(2)}</div>
             <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
-              Rate: ₹{ratePerLitre}/litre {user.hasSensor !== false && `| Usage: ${(myNodeData?.totalLitres || 0).toFixed(1)}L`}
+              Rate: ₹{ratePerLitre}/litre {user.hasSensor !== false && `| Usage: ${formatVolume(myNodeData?.totalLitres)}`}
             </p>
+
           </div>
           <button className="recharge-btn" onClick={() => setShowRechargeModal(true)}>
             ⚡ Recharge
@@ -475,9 +485,9 @@ const ConsumerDashboard = () => {
                    <div style={{ textAlign: 'center', padding: '1rem' }}>
                       <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER REMAINING</h3>
                       <div className="value" style={{ fontSize: '2.5rem', color: '#ef4444' }}>
-                        {user.hasSensor !== false ? emergencyValue.toFixed(2) : Math.floor(emergencyValue)}
-                        <span className="unit" style={{ fontSize: '1rem' }}>{user.hasSensor !== false ? 'L' : 'sec'}</span>
+                        {user.hasSensor !== false ? formatVolume(emergencyValue) : `${Math.floor(emergencyValue)} sec`}
                       </div>
+
                    </div>
                 </div>
               )}
@@ -500,20 +510,20 @@ const ConsumerDashboard = () => {
                   <div className="card" style={{ border: '1px solid var(--primary)', background: 'var(--primary-light)' }}>
                     <h3 style={{ color: 'var(--primary)' }}>Normal Billed</h3>
                     <div className="value" style={{ fontSize: '1.8rem' }}>
-                      {(myNodeData?.totalLitres || 0).toFixed(1)}
-                      <span className="unit">L</span>
+                      {formatVolume(myNodeData?.totalLitres)}
                     </div>
                     <div className="status" style={{ fontSize: '0.6rem' }}>SESSION USAGE</div>
                   </div>
 
+
                   <div className="card" style={{ border: '1px solid var(--danger)', background: 'var(--danger-light)' }}>
                     <h3 style={{ color: 'var(--danger)' }}>SOS Consumption</h3>
                     <div className="value" style={{ fontSize: '1.8rem', color: 'var(--danger)' }}>
-                      {(myNodeData?.emergencyLitresTotal || (myNodeData?.totalLitres - myNodeData?.billedLitres) || 0).toFixed(1)}
-                      <span className="unit">L</span>
+                      {formatVolume(myNodeData?.emergencyLitresTotal || (myNodeData?.totalLitres - myNodeData?.billedLitres))}
                     </div>
                     <div className="status" style={{ fontSize: '0.6rem', background: 'var(--danger)', color: 'white' }}>FREE / SOS</div>
                   </div>
+
                 </>
               )}
 
