@@ -372,9 +372,9 @@ void loop() {
     }
   }
 
-  // ---- 4. REALTIME DATA (every 2s) ----
+  // ---- 4. REALTIME DATA (every 1s) ----
   static unsigned long lastRealtimeReport = 0;
-  if (Firebase.ready() && (millis() - lastRealtimeReport > 2000)) {
+  if (Firebase.ready() && (millis() - lastRealtimeReport > 1000)) {
     lastRealtimeReport = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/flowRate"), flowRate);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/totalLitres"), totalLitres);
