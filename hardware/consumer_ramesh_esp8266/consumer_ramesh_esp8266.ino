@@ -27,8 +27,10 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
-const float TAMPER_THRESHOLD = 0.3; // Ultra-sensitive for instant touch detection
-const float SHOCK_THRESHOLD = 1.2;  // Immediate trigger on physical shock
+float tamperThreshold = 0.3; // Configurable via Firebase
+float shockThreshold = 1.2;  // Configurable via Firebase
+unsigned long theftWarningDelayMs = 5000; // Configurable
+float minFlowThreshold = 0.02; // Configurable
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3
@@ -327,16 +329,17 @@ void loop() {
     if (sec > 0) {
       float hz = pc / sec;
       float raw = hz / flowCalibration; // L/min
-      // Sticky Filter: Slower decay to prevent flickering to 0
       if (pc > 0) {
         flowRate = flowRate * 0.4 + raw * 0.6;
       } else {
-        flowRate = flowRate * 0.8; // Slow decay instead of instant 0
-        if (flowRate < 0.02) flowRate = 0;
+        flowRate = 0.0; // Snap to 0 instantly for responsive theft detection
       }
     } else {
-      flowRate = flowRate * 0.8;
-      if (flowRate < 0.02) flowRate = 0;
+      flowRate = 0.0;
+    }
+
+    if (flowRate > 0 && flowRate < minFlowThreshold) {
+      flowRate = 0.0;
     }
 
     float litres = (float)pc / (flowCalibration * 60.0); 
@@ -357,9 +360,8 @@ void loop() {
       }
     }
 
-    // ---- THEFT CANDIDATE: 5-second zero-flow detection ----
     // Any non-zero flow (even 0.01 L/min) INSTANTLY clears the timer.
-    // Only after 5 continuous seconds of absolute zero flow: theftCandidate = true.
+    // Only after continuous seconds of absolute zero flow: theftCandidate = true.
     if (flowRate > 0) {
       // Flow detected — immediately clear
       if (theftCandidate || zeroFlowStartTime > 0) {
@@ -368,12 +370,12 @@ void loop() {
       theftCandidate = false;
       zeroFlowStartTime = 0;
     } else {
-      // flowRate == 0: start or continue the 5s timer
+      // flowRate == 0: start or continue the timer
       if (zeroFlowStartTime == 0) {
         zeroFlowStartTime = millis();
-      } else if (!theftCandidate && (millis() - zeroFlowStartTime >= 5000)) {
+      } else if (!theftCandidate && (millis() - zeroFlowStartTime >= theftWarningDelayMs)) {
         theftCandidate = true;
-        Serial.println(F("Theft candidate SET: Consumer flow == 0 for 5s."));
+        Serial.println(F("Theft candidate SET: Consumer flow == 0 for delay period."));
       }
     }
 
@@ -405,21 +407,18 @@ void loop() {
     if (baseMag <= 0.001f) baseMag = mag;
 
     float dmag = fabsf(mag - baseMag);
-    bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
-    bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
+    bool shock = dmag > shockThreshold;
+    bool touch = dmag > tamperThreshold;
 
     if (shock || touch) {
-      if (movementStart == 0) movementStart = millis();
-      unsigned long held = millis() - movementStart;
-      if ((shock && held > 60) || (!shock && held > 700)) {
-        bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
-        if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
-          tamperDetected = true;
-          lastTamperTime = millis();
-          logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
-          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-        }
+      bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+      if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
+        tamperDetected = true;
+        lastTamperTime = millis();
+        logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
+        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
       }
+      movementStart = millis();
     } else {
       movementStart = 0;
     }
@@ -445,8 +444,24 @@ void loop() {
       float ml = fbdo.floatData();
       if (ml > 0 && ml < 100000) {
         emergencyQuotaLitres = ml / 1000.0;
-        Serial.printf("Emergency quota updated: %.0f ml\n", ml);
       }
+    }
+    // Read new configurable settings
+    if (Firebase.RTDB.getInt(&fbdo, F("settings/theftWarningDelay"))) {
+      int delaySec = fbdo.intData();
+      if (delaySec >= 1 && delaySec <= 300) theftWarningDelayMs = delaySec * 1000UL;
+    }
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/tamperSensitivity"))) {
+      float ts = fbdo.floatData();
+      if (ts > 0.01 && ts < 10.0) tamperThreshold = ts;
+    }
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/shockSensitivity"))) {
+      float ss = fbdo.floatData();
+      if (ss > 0.05 && ss < 20.0) shockThreshold = ss;
+    }
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/minFlowThreshold"))) {
+      float mf = fbdo.floatData();
+      if (mf >= 0.0 && mf < 10.0) minFlowThreshold = mf;
     }
   }
 

@@ -33,7 +33,8 @@ volatile unsigned long pulseCount = 0;
 float flowRate = 0.0;
 float govSupplyLitres = 0.0; // Total litres passed through main supply
 unsigned long lastFlowCalc = 0;
-float flowCalibration = 98.0; // F = 98 for 6mm ID pipe (1L = 5880 pulses)
+float flowCalibration = 98.0; // Configurable via Firebase
+float minFlowThreshold = 0.02; // Configurable via Firebase
 
 // NOTE: Theft detection has been REMOVED from the gov node entirely.
 // The consumer ESP now sends a `theftCandidate` flag (true when consumer
@@ -161,15 +162,33 @@ void loop() {
       if (pc > 0) {
         flowRate = flowRate * 0.5 + raw * 0.5;
       } else {
-        flowRate = flowRate * 0.8;
-        if (flowRate < 0.05)
-          flowRate = 0;
+        flowRate = 0.0;
       }
+    } else {
+      flowRate = 0.0;
+    }
+    
+    if (flowRate > 0 && flowRate < minFlowThreshold) {
+      flowRate = 0.0;
     }
     float ppl = flowCalibration * 60.0;
     if (ppl > 0)
       govSupplyLitres += (float)pc / ppl;
     lastFlowCalc = millis();
+  }
+
+  // ---- 2.5. SETTINGS SYNC (every 15s) ----
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() && (millis() - lastSettingsSync > 15000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/govCalibration"))) {
+      float v = fbdo.floatData();
+      if (v > 10.0 && v < 1000.0) flowCalibration = v;
+    }
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/minFlowThreshold"))) {
+      float mf = fbdo.floatData();
+      if (mf >= 0.0 && mf < 10.0) minFlowThreshold = mf;
+    }
   }
 
   // ---- 3. TELEMETRY AGGREGATION (every 5s) ----

@@ -35,8 +35,8 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX, baseAccelY, baseAccelZ;
-const float TAMPER_THRESHOLD = 0.3; // Ultra-sensitive for instant touch detection
-const float SHOCK_THRESHOLD = 1.2;  // Immediate trigger on physical shock
+float tamperThreshold = 0.3; // Configurable via Firebase
+float shockThreshold = 1.2;  // Configurable via Firebase
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3
@@ -313,21 +313,18 @@ void loop() {
     if (baseMag <= 0.001f) baseMag = mag;
 
     float dmag = fabsf(mag - baseMag);
-    bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
-    bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
+    bool shock = dmag > shockThreshold;
+    bool touch = dmag > tamperThreshold;
 
     if (shock || touch) {
-      if (movementStart == 0) movementStart = millis();
-      unsigned long held = millis() - movementStart;
-      if ((shock && held > 60) || (!shock && held > 700)) {
-        bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
-        if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
-          tamperDetected = true;
-          lastTamperTime = millis();
-          logAlert("Priya", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
-          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
-        }
+      bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+      if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
+        tamperDetected = true;
+        lastTamperTime = millis();
+        logAlert("Priya", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
+        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
       }
+      movementStart = millis();
     } else {
       movementStart = 0;
     }
@@ -337,6 +334,20 @@ void loop() {
       baseAccelX = baseAccelX * 0.98 + ax * 0.02;
       baseAccelY = baseAccelY * 0.98 + ay * 0.02;
       baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
+    }
+  }
+
+  // ---- 3.5. SETTINGS SYNC (every 15s) ----
+  static unsigned long lastSettingsSync = 0;
+  if (Firebase.ready() && (millis() - lastSettingsSync > 15000 || lastSettingsSync == 0)) {
+    lastSettingsSync = millis();
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/tamperSensitivity"))) {
+      float ts = fbdo.floatData();
+      if (ts > 0.01 && ts < 10.0) tamperThreshold = ts;
+    }
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/shockSensitivity"))) {
+      float ss = fbdo.floatData();
+      if (ss > 0.05 && ss < 20.0) shockThreshold = ss;
     }
   }
 

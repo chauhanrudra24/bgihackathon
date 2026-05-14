@@ -455,6 +455,10 @@ const SettingsView = () => {
   const [localGovCal, setLocalGovCal] = useState(98.0);
   const [localConsCal, setLocalConsCal] = useState(98.0);
   const [localEmergencyQuota, setLocalEmergencyQuota] = useState(50);
+  const [theftWarningDelay, setTheftWarningDelay] = useState(5);
+  const [tamperSensitivity, setTamperSensitivity] = useState(0.3);
+  const [shockSensitivity, setShockSensitivity] = useState(1.2);
+  const [minFlowThreshold, setMinFlowThreshold] = useState(0.02);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -469,6 +473,10 @@ const SettingsView = () => {
         setLocalGovCal(s.govCalibration ?? 98.0);
         setLocalConsCal(s.consumerCalibration ?? 98.0);
         setLocalEmergencyQuota(s.emergencyQuotaMl ?? 50);
+        setTheftWarningDelay(s.theftWarningDelay ?? 5);
+        setTamperSensitivity(s.tamperSensitivity ?? 0.3);
+        setShockSensitivity(s.shockSensitivity ?? 1.2);
+        setMinFlowThreshold(s.minFlowThreshold ?? 0.02);
       }
     });
     return () => unsubscribe();
@@ -483,6 +491,10 @@ const SettingsView = () => {
         govCalibration: parseFloat(localGovCal),
         consumerCalibration: parseFloat(localConsCal),
         emergencyQuotaMl: parseFloat(localEmergencyQuota),
+        theftWarningDelay: parseFloat(theftWarningDelay),
+        tamperSensitivity: parseFloat(tamperSensitivity),
+        shockSensitivity: parseFloat(shockSensitivity),
+        minFlowThreshold: parseFloat(minFlowThreshold),
         updatedAt: Date.now()
       });
       setSaved(true);
@@ -502,7 +514,7 @@ const SettingsView = () => {
             {/* Current saved values indicator */}
             {settings && (
               <div style={{ background: 'var(--primary-light)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--primary)' }}>
-                <strong>🔥 Live from Firebase:</strong> Rate: ₹{settings.pricePerLiter}/L | Gov Cal: {settings.govCalibration} | Consumer Cal: {settings.consumerCalibration} | SOS Quota: {settings.emergencyQuotaMl ?? 50} ml
+                <strong>🔥 Live from Firebase:</strong> Rate: ₹{settings.pricePerLiter}/L | Gov Cal: {settings.govCalibration} | Consumer Cal: {settings.consumerCalibration} | SOS Quota: {settings.emergencyQuotaMl ?? 50} ml | Delay: {settings.theftWarningDelay ?? 5}s
                 {settings.updatedAt && <span style={{ opacity: 0.7 }}> | Last saved: {new Date(settings.updatedAt).toLocaleString()}</span>}
               </div>
             )}
@@ -530,6 +542,30 @@ const SettingsView = () => {
                 <label>🆘 Emergency SOS Quota (ml)</label>
                 <input type="number" step="1" min="10" max="10000" value={localEmergencyQuota} onChange={(e) => setLocalEmergencyQuota(e.target.value)} />
                 <small>Maximum water allowed during SOS emergency override. ESP auto-stops when limit is reached. Applies to Ramesh (flow sensor node).</small>
+              </div>
+
+              <div className="input-group">
+                <label>⏱️ Theft Warning Delay (s)</label>
+                <input type="number" step="1" min="1" max="60" value={theftWarningDelay} onChange={(e) => setTheftWarningDelay(e.target.value)} />
+                <small>Seconds of continuous 0-flow before triggering theft candidate status.</small>
+              </div>
+
+              <div className="input-group">
+                <label>🎛️ Tamper Sensitivity</label>
+                <input type="number" step="0.01" value={tamperSensitivity} onChange={(e) => setTamperSensitivity(e.target.value)} />
+                <small>MPU6050 vibration/touch threshold (lower = more sensitive).</small>
+              </div>
+
+              <div className="input-group">
+                <label>💥 Shock Sensitivity</label>
+                <input type="number" step="0.01" value={shockSensitivity} onChange={(e) => setShockSensitivity(e.target.value)} />
+                <small>MPU6050 instant shock threshold (lower = more sensitive).</small>
+              </div>
+
+              <div className="input-group">
+                <label>💧 Min Flow Threshold (L/min)</label>
+                <input type="number" step="0.01" value={minFlowThreshold} onChange={(e) => setMinFlowThreshold(e.target.value)} />
+                <small>Below this value, flow rate instantly snaps to 0.0 to prevent lingering ghost flow.</small>
               </div>
             </div>
 
