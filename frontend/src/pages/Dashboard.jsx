@@ -321,7 +321,7 @@ const ConsumerCard = memo(({ title, valveState, onToggleValve, nodeData, nodeId,
         <div className="tamper-alert" style={{ background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
           <span>🆘 EMERGENCY OVERRIDE ACTIVE</span>
           <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', opacity: 0.9 }}>
-            Source: <strong>{nodeData?.emergencySource?.replace('_', ' ') || 'UNKNOWN'}</strong> | Remaining: {hasSensor ? `${emergencyValue.toFixed(2)} L` : `${Math.floor(emergencyValue)}s`}
+            Source: <strong>{nodeData?.emergencySource?.replace('_', ' ') || 'UNKNOWN'}</strong> | Remaining: {hasSensor ? formatVolume(emergencyValue) : `${Math.floor(emergencyValue)}s`}
           </p>
         </div>
       )}
@@ -476,6 +476,7 @@ const SettingsView = () => {
   const [localPrice, setLocalPrice] = useState(0.5);
   const [localGovCal, setLocalGovCal] = useState(98.0);
   const [localConsCal, setLocalConsCal] = useState(98.0);
+  const [localEmergencyQuota, setLocalEmergencyQuota] = useState(50);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -489,6 +490,7 @@ const SettingsView = () => {
         setLocalPrice(s.pricePerLiter ?? 0.5);
         setLocalGovCal(s.govCalibration ?? 98.0);
         setLocalConsCal(s.consumerCalibration ?? 98.0);
+        setLocalEmergencyQuota(s.emergencyQuotaMl ?? 50);
       }
     });
     return () => unsubscribe();
@@ -502,6 +504,7 @@ const SettingsView = () => {
         pricePerLiter: parseFloat(localPrice),
         govCalibration: parseFloat(localGovCal),
         consumerCalibration: parseFloat(localConsCal),
+        emergencyQuotaMl: parseFloat(localEmergencyQuota),
         updatedAt: Date.now()
       });
       setSaved(true);
@@ -521,7 +524,7 @@ const SettingsView = () => {
             {/* Current saved values indicator */}
             {settings && (
               <div style={{ background: 'var(--primary-light)', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--primary)' }}>
-                <strong>🔥 Live from Firebase:</strong> Rate: ₹{settings.pricePerLiter}/L | Gov Cal: {settings.govCalibration} | Consumer Cal: {settings.consumerCalibration}
+                <strong>🔥 Live from Firebase:</strong> Rate: ₹{settings.pricePerLiter}/L | Gov Cal: {settings.govCalibration} | Consumer Cal: {settings.consumerCalibration} | SOS Quota: {settings.emergencyQuotaMl ?? 50} ml
                 {settings.updatedAt && <span style={{ opacity: 0.7 }}> | Last saved: {new Date(settings.updatedAt).toLocaleString()}</span>}
               </div>
             )}
@@ -543,6 +546,32 @@ const SettingsView = () => {
                 <label>🏠 Consumer Node Calibration</label>
                 <input type="number" step="0.1" value={localConsCal} onChange={(e) => setLocalConsCal(e.target.value)} />
                 <small>Standard: 98.0 for 6mm ID pipe. (1 Litre = 5880 Pulses).</small>
+              </div>
+
+              <div className="input-group">
+                <label>🆘 Emergency SOS Quota (ml)</label>
+                <input type="number" step="1" min="10" max="10000" value={localEmergencyQuota} onChange={(e) => setLocalEmergencyQuota(e.target.value)} />
+                <small>Maximum water allowed during SOS emergency override. ESP auto-stops when limit is reached. Applies to Ramesh (flow sensor node).</small>
+              </div>
+            </div>
+
+            {/* Quick SOS Quota presets */}
+            <div style={{ marginTop: '1rem' }}>
+              <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>SOS Quota Presets:</p>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {[25, 50, 100, 200, 500, 1000].map(ml => (
+                  <button key={ml} onClick={() => setLocalEmergencyQuota(ml)}
+                    style={{ 
+                      padding: '0.4rem 0.8rem', 
+                      border: parseFloat(localEmergencyQuota) === ml ? '2px solid var(--danger)' : '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)', 
+                      background: parseFloat(localEmergencyQuota) === ml ? 'var(--danger-light)' : 'white',
+                      color: parseFloat(localEmergencyQuota) === ml ? 'var(--danger)' : 'inherit',
+                      fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem'
+                    }}>
+                    {ml >= 1000 ? `${ml/1000}L` : `${ml}ml`}
+                  </button>
+                ))}
               </div>
             </div>
 

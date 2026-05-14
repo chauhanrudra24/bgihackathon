@@ -45,7 +45,8 @@ bool  currentValveState = false;
 float flowRate         = 0.0;
 float totalLitres      = 0.0;   // Billed usage
 float emergencyLitres  = 0.0;   // Total used this session
-float emergencyValue   = 0.0;   // Current quota
+float emergencyValue   = 0.0;   // Remaining quota in litres
+float emergencyQuotaLitres = 0.050; // Default: 50ml. Updated from Firebase settings.
 unsigned long lastFlowCalc = 0;
 unsigned long lastValveActionTime = 0;
 float flowCalibration  = 98.0; 
@@ -79,26 +80,26 @@ void logAlert(const char* node, const char* type, const char* msg) {
 void setEmergency(bool state, const char* source) {
   if (emergencyActive == state) return; // Ignore if no change
   emergencyActive = state;
-  Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
+  Serial.printf("SOS EMERGENCY [%s]: %s (Quota: %.0f ml)\n", source, emergencyActive ? "ON" : "OFF", emergencyQuotaLitres * 1000);
   
   if (emergencyActive) {
-    // Unlimited SOS mode (no quota). ESP tracks litres consumed during SOS.
-    emergencyValue = 0.0;
-    emergencyLitres = 0.0;
+    // Set quota from settings. ESP tracks litres consumed and auto-stops.
+    emergencyValue = emergencyQuotaLitres; // Remaining = full quota
+    emergencyLitres = 0.0;                 // Used = 0
   } else {
     // Log to Firestore on deactivation
     FirebaseJson log;
     log.add("nodeId", "consumer_node");
     log.add("event", "SOS_OVERRIDE");
     log.add("source", source);
-    log.add("duration", millis() / 1000); // Simple uptime-based duration for context
+    log.add("litresUsed", emergencyLitres);
+    log.add("quotaMl", (int)(emergencyQuotaLitres * 1000));
     log.set("timestamp/.sv", "timestamp");
     Firebase.Firestore.createDocument(&fbdo, FIREBASE_PROJECT_ID, "", "emergencyLogs", log.raw());
   }
 
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
-  // For UI: expose emergencyValue as "SOS litres used" (since we removed quota)
-  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyLitres);
+  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyValue);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -337,8 +338,14 @@ void loop() {
       }
       if (emergencyActive) {
         emergencyLitres += litres;
-        // No quota: keep emergencyActive until user/admin stops it.
-        emergencyValue = emergencyLitres;
+        // Decrease remaining quota
+        emergencyValue = emergencyQuotaLitres - emergencyLitres;
+        if (emergencyValue < 0) emergencyValue = 0;
+        // Auto-stop when quota exhausted
+        if (emergencyLitres >= emergencyQuotaLitres) {
+          Serial.printf("SOS QUOTA EXHAUSTED: Used %.0f ml of %.0f ml\n", emergencyLitres * 1000, emergencyQuotaLitres * 1000);
+          setEmergency(false, "QUOTA_EXHAUSTED");
+        }
       }
     }
 
@@ -407,6 +414,14 @@ void loop() {
     if (Firebase.RTDB.getFloat(&fbdo, F("settings/consumerCalibration"))) {
       float v = fbdo.floatData();
       if (v > 10.0 && v < 1000.0) flowCalibration = v;
+    }
+    // Read emergency quota from settings (in ml, convert to litres)
+    if (Firebase.RTDB.getFloat(&fbdo, F("settings/emergencyQuotaMl"))) {
+      float ml = fbdo.floatData();
+      if (ml > 0 && ml < 100000) {
+        emergencyQuotaLitres = ml / 1000.0;
+        Serial.printf("Emergency quota updated: %.0f ml\n", ml);
+      }
     }
   }
 
