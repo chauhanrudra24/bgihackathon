@@ -241,46 +241,8 @@ void loop() {
     // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's node)
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
-    // Theft rule (Ramesh):
-    // - If gov supply is ON
-    // - AND Ramesh flow is NEAR-ZERO (<= 0.01)
-    // - AND Priya is CLOSED (to avoid false blame)
-    // - sustained for 5s => flag.
-    bool potentialTheft = false;
-    if (flowRate >= GOV_FLOW_ACTIVE_LPM) {
-      if (!priyaOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
-        potentialTheft = true;
-      }
-    }
-
-    if (potentialTheft) {
-      if (theftAlertStartTime == 0) {
-        theftAlertStartTime = millis();
-        theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > THEFT_PERSIST_MS) { 
-        if (theftStatus != "THEFT FLAGGED") {
-          theftStatus = "THEFT FLAGGED";
-          
-          String targetNode = "consumer_node"; // Default to Ramesh
-          String reason = "Gov flow ON but Ramesh flow near-zero for 5s (valve open). Possible bypass/leak.";
-          
-          logAlert("Ramesh", "THEFT", "Ramesh bypass suspected: Gov supply active, valves open, but meter reports near-zero flow (persistent).");
-
-          FirebaseJson updates;
-          updates.set("valves/" + targetNode + "/gov", false);
-          updates.set("accounts/" + targetNode + "/theftFlagged", true);
-          updates.set("accounts/" + targetNode + "/theftReason", reason);
-          Firebase.RTDB.updateNode(&fbdo, "/", &updates);
-        }
-      }
-    } else {
-      theftAlertStartTime = 0;
-      if (theftStatus != "THEFT FLAGGED") theftStatus = "NORMAL";
-    }
-    
-    // Batch Update Status
+    // Batch Update Status (Telemetry Only)
     FirebaseJson statusUpdates;
-    statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
     statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
     statusUpdates.set("sensorData/gov_node/consumerTotalLitres", consumerTotalLitres);
     statusUpdates.set("sensorData/gov_node/flowDifference", flowDifference);

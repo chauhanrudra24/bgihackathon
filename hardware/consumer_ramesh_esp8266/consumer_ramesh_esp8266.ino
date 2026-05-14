@@ -27,8 +27,8 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
-const float TAMPER_THRESHOLD = 0.8; // High sensitivity for human touch
-const float SHOCK_THRESHOLD = 3.5;  // Instant knock detection
+const float TAMPER_THRESHOLD = 0.3; // Ultra-sensitive for instant touch detection
+const float SHOCK_THRESHOLD = 1.2;  // Immediate trigger on physical shock
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3

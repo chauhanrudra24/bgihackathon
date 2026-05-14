@@ -786,11 +786,48 @@ const Dashboard = () => {
   }, [alertLogs.length]);
 
 
-  // ===== AUTO THEFT DETECTION (with 5s persistence) =====
-  // IMPORTANT:
-  // Theft detection + persistence is handled on the Gov node firmware
-  // (`sensorData/gov_node/theftStatus`). Dashboard should only *display*
-  // the status to avoid false flags during brief sensor/network jitter.
+  // ===== SERVER-SIDE THEFT DETECTION (Analytical Logic) =====
+  const theftTimerRef = useRef(null);
+  useEffect(() => {
+    if (!data || !data['gov_node'] || !data['consumer_node']) return;
+
+    const govFlow = data['gov_node'].flowRate || 0;
+    const rameshFlow = data['consumer_node'].flowRate || 0;
+    const priyaOpen = valves['consumer_node_8266']?.gov && valves['consumer_node_8266']?.user;
+    
+    // Theft Rule: Main supply is active (>0.5L/min) but consumer meter reports <0.01L/min
+    // AND Priya's valve is closed (to avoid false blame).
+    const isSuspicious = govFlow > 0.5 && rameshFlow < 0.01 && !priyaOpen;
+
+    if (isSuspicious) {
+      if (!theftTimerRef.current) {
+        theftTimerRef.current = setTimeout(() => {
+          const targetId = 'consumer_node';
+          if (!accounts[targetId]?.theftFlagged) {
+            update(ref(db, `accounts/${targetId}`), { 
+              theftFlagged: true,
+              theftReason: "Dashboard Analytics: Supply active without consumer meter response (Persistent 5s)." 
+            });
+            set(ref(db, `valves/${targetId}/gov`), false);
+            toast.error(`🚨 THEFT DETECTED: Auto-blocking Ramesh Kumar node.`);
+            
+            // Log to alertLogs for history
+            set(ref(db, `alertLogs/${Date.now()}`), {
+              node: 'Ramesh',
+              type: 'THEFT',
+              msg: 'Dashboard Analytics: Suspicious bypass detected. Supply ON, Meter OFF.',
+              timestamp: Date.now()
+            });
+          }
+        }, 5000);
+      }
+    } else {
+      if (theftTimerRef.current) {
+        clearTimeout(theftTimerRef.current);
+        theftTimerRef.current = null;
+      }
+    }
+  }, [data?.gov_node?.flowRate, data?.consumer_node?.flowRate, valves]);
 
   // ===== AUTO BALANCE CHECK =====
   // If balance <= 0, auto-block supply
