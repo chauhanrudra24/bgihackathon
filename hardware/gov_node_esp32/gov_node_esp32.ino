@@ -41,9 +41,9 @@ unsigned long theftAlertStartTime = 0;
 bool theftFlaggedGlobal = false;
 
 // Theft detection tuning
-const float GOV_FLOW_ACTIVE_LPM = 0.5;        // Supply must be meaningfully ON
-const float RAMESH_ZERO_LPM     = 0.02;       // Flow < 0.02 is "Zero" for theft logic
-const unsigned long THEFT_PERSIST_MS = 5000;   // Exactly 5s timer
+const float GOV_FLOW_ACTIVE_LPM = 0.5;        
+const float RAMESH_ZERO_LPM     = 0.01;       // Even 0.01 L/min is "Flowing" (Don't mark)
+const unsigned long THEFT_PERSIST_MS = 5000;  
 
 static float jsonToFloat(FirebaseJsonData &d) {
   // FirebaseJsonData::to<T>() is not a const member, so we take a non-const reference.
@@ -242,14 +242,13 @@ void loop() {
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
     // Theft rule (Ramesh):
-    // - If gov supply is ON (flowRate > threshold)
-    // - AND Ramesh valve is open (gov+user)
-    // - AND Ramesh flow is near-zero
+    // - If gov supply is ON
+    // - AND Ramesh flow is NEAR-ZERO (<= 0.01)
+    // - AND Priya is CLOSED (to avoid false blame)
     // - sustained for 5s => flag.
-    // - If gov supply is OFF => reset/ignore (no theft detection).
     bool potentialTheft = false;
     if (flowRate >= GOV_FLOW_ACTIVE_LPM) {
-      if (rameshOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
+      if (!priyaOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
         potentialTheft = true;
       }
     }
