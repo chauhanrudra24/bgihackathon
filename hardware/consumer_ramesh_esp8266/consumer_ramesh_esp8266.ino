@@ -27,8 +27,8 @@ Adafruit_MPU6050 mpu;
 bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
-float tamperThreshold = 0.2; // Configurable via Firebase (Binary Rule default)
-float shockThreshold = 0.5;  // Configurable via Firebase (Binary Rule default)
+float tamperThreshold = 0.5; // Configurable via Firebase (Binary Rule default)
+float shockThreshold = 1;  // Configurable via Firebase (Binary Rule default)
 unsigned long theftWarningDelayMs = 5000; // Configurable (5s delay as requested)
 float minFlowThreshold = 0.001; // Configurable (Binary Rule default)
 
@@ -237,7 +237,9 @@ void loop() {
         }
       }
       if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {
+        Serial.println(F("COMMAND: Clear Tamper Received"));
         tamperDetected = false;
+        // Immediate update to Firebase to stop feedback loop
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/clearTamper"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), true);
@@ -245,23 +247,27 @@ void loop() {
           sensors_event_t a, g, temp;
           mpu.getEvent(&a, &g, &temp);
           baseAccelX = a.acceleration.x; baseAccelY = a.acceleration.y; baseAccelZ = a.acceleration.z;
+          Serial.println(F("MPU Baseline Recalibrated."));
         }
       }
     }
 
+    // ---- 1b. LOCAL VALVE LOGIC (Reactive to both Cloud & Physical SOS/Tamper) ----
+    bool gov = true, usr = true;
     if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node"))) {
       FirebaseJson &j = fbdo.jsonObject();
       FirebaseJsonData d;
-      bool gov = true, usr = true;
       if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
       if (j.get(d, F("user")) && d.success) usr = d.boolValue;
-      bool newState = (gov && usr && !tamperDetected) || emergencyActive;
-      if (newState != currentValveState) {
-        currentValveState = newState;
-        digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-        lastValveActionTime = millis();
-        Serial.printf("Relay switched: %s\n", currentValveState ? "OPEN" : "CLOSED");
-      }
+    }
+
+    bool newState = (gov && usr && !tamperDetected) || emergencyActive;
+    if (newState != currentValveState) {
+      currentValveState = newState;
+      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+      lastValveActionTime = millis();
+      Serial.printf("Valve Logic -> %s (Gov:%d, Usr:%d, Tamper:%d, SOS:%d)\n", 
+                    currentValveState ? "OPEN" : "CLOSED", gov, usr, tamperDetected, emergencyActive);
     }
   }
 

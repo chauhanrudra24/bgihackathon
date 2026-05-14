@@ -210,21 +210,7 @@ void loop() {
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
     lastControlCheckMs = millis();
-    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
-      FirebaseJson &j = fbdo.jsonObject();
-      FirebaseJsonData d;
-      bool gov = true, usr = true;
-      if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
-      if (j.get(d, F("user")) && d.success) usr = d.boolValue;
-      bool newState = (gov && usr && !tamperDetected) || emergencyActive;
-      if (newState != currentValveState) {
-        currentValveState = newState;
-        digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
-        lastValveActionTime = millis();
-        Serial.printf("Priya Relay switched: %s\n", currentValveState ? "OPEN" : "CLOSED");
-      }
-    }
-    yield();
+
     if (Firebase.RTDB.getJSON(&fbdo, F("commands/consumer_node_8266"))) {
       FirebaseJson &j = fbdo.jsonObject();
       FirebaseJsonData d;
@@ -248,6 +234,7 @@ void loop() {
         }
       }
       if (j.get(d, F("clearTamper")) && d.success && d.boolValue) {
+        Serial.println(F("COMMAND: Clear Tamper Received"));
         tamperDetected = false;
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/clearTamper"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node_8266/tamperDetected"), false);
@@ -256,9 +243,29 @@ void loop() {
           sensors_event_t a, g, temp;
           mpu.getEvent(&a, &g, &temp);
           baseAccelX = a.acceleration.x; baseAccelY = a.acceleration.y; baseAccelZ = a.acceleration.z;
+          Serial.println(F("MPU Baseline Recalibrated."));
         }
       }
     }
+
+    // ---- 1b. LOCAL VALVE LOGIC (Reactive to Cloud + Local SOS/Tamper) ----
+    bool gov = true, usr = true;
+    if (Firebase.RTDB.getJSON(&fbdo, F("valves/consumer_node_8266"))) {
+      FirebaseJson &j = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (j.get(d, F("gov")) && d.success) gov = d.boolValue;
+      if (j.get(d, F("user")) && d.success) usr = d.boolValue;
+    }
+
+    bool newState = (gov && usr && !tamperDetected) || emergencyActive;
+    if (newState != currentValveState) {
+      currentValveState = newState;
+      digitalWrite(RELAY_PIN, currentValveState ? RELAY_ON : RELAY_OFF);
+      lastValveActionTime = millis();
+      Serial.printf("Priya Valve Logic -> %s (Gov:%d, Usr:%d, Tamper:%d, SOS:%d)\n", 
+                    currentValveState ? "OPEN" : "CLOSED", gov, usr, tamperDetected, emergencyActive);
+    }
+  }
     yield();
   }
 
