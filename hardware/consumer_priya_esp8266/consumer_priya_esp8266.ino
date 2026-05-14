@@ -213,6 +213,20 @@ void loop() {
     // Handled above in logic block
   }
 
+  // ---- 0c. TAMPER INDICATOR (Blink SOS LED until unblocked) ----
+  static unsigned long lastTamperBlink = 0;
+  static bool tamperLedState = false;
+  if (tamperDetected) {
+    if (millis() - lastTamperBlink > 200) {
+      lastTamperBlink = millis();
+      tamperLedState = !tamperLedState;
+      digitalWrite(EMERGENCY_LED_PIN, tamperLedState ? HIGH : LOW);
+    }
+  } else {
+    // Normal behavior: LED shows SOS state
+    digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
+  }
+
   // ---- 1. CONTROL SYNC: Valves + Commands (every 1s) ----
   if (Firebase.ready() && (millis() - lastControlCheckMs > 1000)) {
     lastControlCheckMs = millis();

@@ -47,6 +47,16 @@ const float GOV_FLOW_ACTIVE_LPM = 0.25;        // "Gov flow ON" threshold (L/min
 const float RAMESH_ZERO_LPM     = 0.01;        // Treat <= 0.01 L/min as "no flow"
 const unsigned long THEFT_PERSIST_MS = 5000;   // 5s persistence before flag
 
+static float jsonToFloat(const FirebaseJsonData &d) {
+  // FirebaseJsonData sometimes stores numeric values as int/double/string.
+  if (!d.success) return 0.0f;
+  if (d.typeNum == FirebaseJson::JSON_STRING) {
+    return d.stringValue.toFloat();
+  }
+  // `to<double>()` handles int/double
+  return (float)d.to<double>();
+}
+
 void IRAM_ATTR flowPulseISR() {
   static unsigned long lastPulse = 0;
   unsigned long now = micros();
@@ -185,11 +195,11 @@ void loop() {
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
-      if (res.get(d, F("consumer_node/flowRate"))) rameshFlow = d.floatValue;
-      if (res.get(d, F("consumer_node/totalLitres"))) rameshTotal = d.floatValue;
+      if (res.get(d, F("consumer_node/flowRate"))) rameshFlow = jsonToFloat(d);
+      if (res.get(d, F("consumer_node/totalLitres"))) rameshTotal = jsonToFloat(d);
       if (res.get(d, F("consumer_node/tamperDetected"))) rTamper = d.boolValue;
-      if (res.get(d, F("consumer_node/lastSeen"))) rameshLastSeen = (unsigned long)d.intValue;
-      if (res.get(d, F("consumer_node_8266/totalLitres"))) priyaTotal = d.floatValue;
+      if (res.get(d, F("consumer_node/lastSeen"))) rameshLastSeen = (unsigned long)jsonToFloat(d);
+      if (res.get(d, F("consumer_node_8266/totalLitres"))) priyaTotal = jsonToFloat(d);
     }
 
     if (Firebase.RTDB.getJSON(&fbdo, F("valves"))) {
