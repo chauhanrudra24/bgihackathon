@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ref, onValue, set, update, push } from 'firebase/database';
-import { db } from '../firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, firestore } from '../firebase';
 import toast from 'react-hot-toast';
 
 const formatVolume = (litres) => {
@@ -27,6 +28,7 @@ const ConsumerDashboard = () => {
   const [prevLitres, setPrevLitres] = useState(null);
   const [myRecharges, setMyRecharges] = useState([]);
   const [myUsageLogs, setMyUsageLogs] = useState([]);
+  const lastSyncedBalanceRef = useRef(0);
   
   const { nodeId } = useParams();
   const navigate = useNavigate();
@@ -73,7 +75,9 @@ const ConsumerDashboard = () => {
         setAccount(acctData);
       } else {
         // Initialize account with default balance if not exists
-        set(ref(db, `accounts/${nodeId}`), { balance: 500, blocked: false, theftFlagged: false });
+        const initial = { balance: 500, blocked: false, theftFlagged: false };
+        set(ref(db, `accounts/${nodeId}`), initial);
+        syncBalanceToFirestore(500);
       }
     });
 
@@ -92,6 +96,21 @@ const ConsumerDashboard = () => {
       unsubscribeSettings();
     };
   }, [nodeId, navigate, user.role, user.nodeId]);
+
+  // Helper to sync balance to Firestore for persistent history/last state
+  const syncBalanceToFirestore = async (newBalance) => {
+    try {
+      await setDoc(doc(firestore, "consumerBalances", nodeId), {
+        nodeId,
+        consumerName: user.name,
+        balance: parseFloat(newBalance.toFixed(2)),
+        lastUpdated: serverTimestamp()
+      }, { merge: true });
+      lastSyncedBalanceRef.current = newBalance;
+    } catch (err) {
+      console.error("Firestore sync error:", err);
+    }
+  };
 
   useEffect(() => {
     if (!nodeId) return;
@@ -150,6 +169,12 @@ const ConsumerDashboard = () => {
           cost: parseFloat(cost.toFixed(2)),
           remainingBalance: parseFloat(newBalance.toFixed(2))
         });
+
+        // Sync to Firestore periodically or on significant change
+        // Throttled to avoid spamming Firestore on every few millilitres
+        if (Math.abs(newBalance - lastSyncedBalanceRef.current) > 1.0) {
+           syncBalanceToFirestore(newBalance);
+        }
       }
 
       // Auto-block if balance hits zero
@@ -190,7 +215,11 @@ const ConsumerDashboard = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Final balance sync to Firestore on logout
+    if (account.balance !== undefined) {
+      await syncBalanceToFirestore(account.balance);
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/');
@@ -229,6 +258,7 @@ const ConsumerDashboard = () => {
     setTimeout(() => {
       const newBalance = (account.balance || 0) + amount;
       set(ref(db, `accounts/${nodeId}/balance`), parseFloat(newBalance.toFixed(2)));
+      syncBalanceToFirestore(newBalance);
       
       // If was blocked due to zero balance, unblock
       if (account.blocked && !account.theftFlagged) {
