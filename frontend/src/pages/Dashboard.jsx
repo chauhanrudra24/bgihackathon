@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
+import { AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { ref, onValue, set, remove, update, push } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -646,6 +647,7 @@ const Dashboard = () => {
   const [alertLogs, setAlertLogs] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [flowHistory, setFlowHistory] = useState([]);
   
   // Popup state
   const [popup, setPopup] = useState({ 
@@ -800,6 +802,28 @@ const Dashboard = () => {
     }, 100);
     return () => clearInterval(timer);
   }, []);
+
+  // ---- RECORD FLOW HISTORY FOR ANALYTICS ----
+  useEffect(() => {
+    if (!data) return;
+    const interval = setInterval(() => {
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const govFlow = data?.gov_node?.flowRate || 0;
+      const totalConsumerFlow = CONSUMER_NODES.reduce((sum, node) => sum + (data[node.nodeId]?.flowRate || 0), 0);
+      
+      setFlowHistory(prev => {
+        const next = [...prev, { 
+          time: now, 
+          gov: parseFloat(govFlow.toFixed(2)), 
+          consumer: parseFloat(totalConsumerFlow.toFixed(2)),
+          loss: parseFloat((govFlow - totalConsumerFlow).toFixed(2))
+        }];
+        if (next.length > 30) return next.slice(1); // Keep last 2.5 minutes of data (5s intervals)
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [data]);
 
   // ---- INSTANT ALERT DETECTION ----
   const [lastAlertCount, setLastAlertCount] = useState(0);
@@ -1295,102 +1319,259 @@ const Dashboard = () => {
     );
   };
 
-  const renderAnalytics = () => (
-    <div className="main-content">
-      <div className="card">
-        <h2>📡 Live Network Feed</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Real-time heartbeat monitoring for all network nodes.</p>
-        
-        <div className="theft-list-container" style={{ background: 'var(--bg-color)', padding: '1rem' }}>
-          {/* Main Gov Node */}
-          <div className="theft-item" style={{ borderLeft: '4px solid var(--primary)' }}>
-            <div className="theft-item-info">
-              <h4>🏢 Rau Pumping Station</h4>
-              <p style={{ fontSize: '0.8rem' }}>Status: {isNodeOnline(govNode) ? '🟢 Online' : '🔴 Offline'}</p>
+  const renderAnalytics = () => {
+    const govNode = data?.gov_node || {};
+    const govSupply = govNode.govSupplyLitres || 0;
+    const totalConsumerUsage = CONSUMER_NODES.reduce((sum, node) => sum + (data[node.nodeId]?.totalLitres || 0), 0);
+    const waterLossLitre = govSupply - totalConsumerUsage > 0 ? govSupply - totalConsumerUsage : 0;
+    const lossPercentage = govSupply > 0 ? (waterLossLitre / govSupply) * 100 : 0;
+    const avgUsagePerHouse = CONSUMER_NODES.length > 0 ? totalConsumerUsage / CONSUMER_NODES.length : 0;
+
+    return (
+      <div className="main-content">
+        {/* Analytics Header Summary */}
+        <div className="analytics-summary-grid" style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+          gap: '1.5rem',
+          marginBottom: '2rem'
+        }}>
+          <div className="card stat-card" style={{ borderLeft: '4px solid var(--primary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TOTAL SUPPLY</p>
+                <h2 style={{ margin: '0.5rem 0' }}>{formatVolume(govSupply)}</h2>
+              </div>
+              <div style={{ fontSize: '2rem' }}>🏢</div>
             </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Last Seen: {govNode.lastSeen ? new Date(govNode.lastSeen).toLocaleTimeString() : 'Never'}
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Aggregate from Rau Pumping Station</p>
+          </div>
+
+          <div className="card stat-card" style={{ borderLeft: '4px solid var(--success)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>AVG USAGE / HOUSE</p>
+                <h2 style={{ margin: '0.5rem 0' }}>{formatVolume(avgUsagePerHouse)}</h2>
+              </div>
+              <div style={{ fontSize: '2rem' }}>🏠</div>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Distributed across {CONSUMER_NODES.length} households</p>
+          </div>
+
+          <div className="card stat-card" style={{ borderLeft: '4px solid var(--danger)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>UNACCOUNTED LOSS</p>
+                <h2 style={{ margin: '0.5rem 0', color: 'var(--danger)' }}>{formatVolume(waterLossLitre)}</h2>
+              </div>
+              <div style={{ fontSize: '2rem' }}>📉</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className={`status ${lossPercentage > 15 ? 'dirty' : lossPercentage > 5 ? 'warning' : ''}`} style={{ fontSize: '0.7rem' }}>
+                {lossPercentage.toFixed(1)}% LOSS
+              </span>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Real-time network discrepancy</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Consumption Graph Card */}
+        <div className="card" style={{ marginBottom: '2rem', height: '450px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div>
+              <h2>📈 Real-Time Consumption Analysis</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Comparison of main supply vs. aggregate consumer demand (L/min).</p>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--primary)' }}></div> Main Supply
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: 'var(--success)' }}></div> Consumer Load
+              </div>
+            </div>
+          </div>
+          
+          <div style={{ width: '100%', height: '320px' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={flowHistory}>
+                <defs>
+                  <linearGradient id="colorGov" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorCons" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--success)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="var(--success)" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                <XAxis 
+                  dataKey="time" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
+                />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
+                  label={{ value: 'L/min', angle: -90, position: 'insideLeft', fontSize: 10, fill: 'var(--text-secondary)' }}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    background: 'white', 
+                    borderRadius: 'var(--radius-md)', 
+                    border: '1px solid var(--border-color)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    fontSize: '0.85rem'
+                  }} 
+                />
+                <Area type="monotone" dataKey="gov" name="Main Supply" stroke="var(--primary)" strokeWidth={3} fillOpacity={1} fill="url(#colorGov)" />
+                <Area type="monotone" dataKey="consumer" name="Consumer Load" stroke="var(--success)" strokeWidth={3} fillOpacity={1} fill="url(#colorCons)" />
+                <Line type="monotone" dataKey="loss" name="Network Loss" stroke="var(--danger)" strokeDasharray="5 5" dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+          <div className="card">
+            <h2>📡 Live Network Feed</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.85rem' }}>Real-time heartbeat monitoring for all nodes.</p>
+            <div className="theft-list-container" style={{ background: 'var(--bg-color)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+              {/* Main Gov Node */}
+              <div className="theft-item" style={{ borderLeft: '4px solid var(--primary)', background: 'white', marginBottom: '0.75rem' }}>
+                <div className="theft-item-info">
+                  <h4>🏢 Rau Pumping Station</h4>
+                  <p style={{ fontSize: '0.8rem' }}>Status: {isNodeOnline(govNode) ? '🟢 Online' : '🔴 Offline'}</p>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Last Seen: {govNode.lastSeen ? new Date(govNode.lastSeen).toLocaleTimeString() : 'Never'}
+                </div>
+              </div>
+
+              {/* Consumer Nodes */}
+              {CONSUMER_NODES.map(({ nodeId, name }) => {
+                const nodeData = data[nodeId];
+                const online = isNodeOnline(nodeData);
+                return (
+                  <div className="theft-item" key={nodeId} style={{ borderLeft: `4px solid ${online ? 'var(--success)' : 'var(--danger)'}`, background: 'white', marginBottom: '0.75rem' }}>
+                    <div className="theft-item-info">
+                      <h4>🏠 {name}</h4>
+                      <p style={{ fontSize: '0.8rem' }}>Status: {online ? '🟢 Online' : '🔴 Offline'}</p>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Last Seen: {nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Consumer Nodes */}
-          {CONSUMER_NODES.map(({ nodeId, name }) => {
-            const nodeData = data[nodeId];
-            const online = isNodeOnline(nodeData);
-            return (
-              <div className="theft-item" key={nodeId} style={{ borderLeft: `4px solid ${online ? 'var(--success)' : 'var(--danger)'}` }}>
-                <div className="theft-item-info">
-                  <h4>🏠 {name}</h4>
-                  <p style={{ fontSize: '0.8rem' }}>Status: {online ? '🟢 Online' : '🔴 Offline'}</p>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Last Seen: {nodeData?.lastSeen ? new Date(nodeData.lastSeen).toLocaleTimeString() : 'Never'}
-                </div>
-              </div>
-            );
-          })}
+          <div className="card">
+            <h2>⚡ Efficiency Tracker</h2>
+            <div style={{ marginTop: '2rem' }}>
+               <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                    <span>System Efficiency</span>
+                    <span style={{ fontWeight: 700, color: lossPercentage < 10 ? 'var(--success)' : 'var(--danger)' }}>
+                      {(100 - lossPercentage).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div style={{ height: '12px', background: 'var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
+                    <div style={{ 
+                      height: '100%', 
+                      width: `${100 - lossPercentage}%`, 
+                      background: lossPercentage < 10 ? 'var(--success)' : (lossPercentage < 20 ? 'var(--warning)' : 'var(--danger)'),
+                      transition: 'width 1s ease-in-out'
+                    }}></div>
+                  </div>
+               </div>
+
+               <div className="analytics-details" style={{ fontSize: '0.85rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Daily Supply Goal</span>
+                    <span style={{ fontWeight: 600 }}>100.0 L</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Current System Variance</span>
+                    <span style={{ fontWeight: 600, color: 'var(--danger)' }}>{waterLossLitre.toFixed(2)} L</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Households Monitored</span>
+                    <span style={{ fontWeight: 600 }}>{CONSUMER_NODES.length} Houses</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Loss Status</span>
+                    <span className={`status ${lossPercentage < 10 ? '' : 'dirty'}`} style={{ fontWeight: 700 }}>
+                      {lossPercentage < 10 ? 'STABLE' : 'HIGH LOSS'}
+                    </span>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Raw Data Feed */}
+        <div className="card" style={{ marginTop: '2rem' }}>
+          <h2>📝 Live Raw Data Feed</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Detailed stream of raw sensor values and aggregate network metrics.</p>
+          <div className="gov-table-container">
+            <table className="gov-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border-color)' }}>
+                  <th style={{ padding: '1rem' }}>Metric</th>
+                  <th>Value</th>
+                  <th>Unit</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Main Supply Flow</td>
+                  <td>{(govNode.flowRate || 0).toFixed(2)}</td>
+                  <td>L/min</td>
+                  <td><span className="status" style={{ fontSize: '0.6rem' }}>LIVE</span></td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Plant Supply</td>
+                  <td>{formatVolume(govNode.govSupplyLitres)}</td>
+                  <td>--</td>
+                  <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Consumer Usage</td>
+                  <td>{formatVolume(totalConsumerUsage)}</td>
+                  <td>--</td>
+                  <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Unaccounted Loss</td>
+                  <td>{formatVolume(waterLossLitre)}</td>
+                  <td>--</td>
+                  <td><span className={`status ${lossPercentage > 10 ? 'dirty' : ''}`} style={{ fontSize: '0.6rem' }}>{lossPercentage > 10 ? 'LOSS DETECTED' : 'STABLE'}</span></td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Turbidity Sensor</td>
+                  <td>{(govNode.turbidityVoltage || 0).toFixed(2)}</td>
+                  <td>Volts</td>
+                  <td><span className={govNode.turbidityConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.turbidityConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>TDS Sensor</td>
+                  <td>{(govNode.tdsValue || 0).toFixed(1)}</td>
+                  <td>ppm</td>
+                  <td><span className={govNode.tdsConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.tdsConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-
-      <div className="card" style={{ marginTop: '2rem' }}>
-        <h2>📝 Live Raw Data Feed</h2>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Detailed stream of raw sensor values and aggregate network metrics.</p>
-        <div className="gov-table-container">
-          <table className="gov-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border-color)' }}>
-                <th style={{ padding: '1rem' }}>Metric</th>
-                <th>Value</th>
-                <th>Unit</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Main Supply Flow</td>
-                <td>{(govNode.flowRate || 0).toFixed(2)}</td>
-                <td>L/min</td>
-                <td><span className="status" style={{ fontSize: '0.6rem' }}>LIVE</span></td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Plant Supply</td>
-                <td>{formatVolume(govNode.govSupplyLitres)}</td>
-                <td>--</td>
-                <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
-              </tr>
-
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Total Consumer Usage</td>
-                <td>{formatVolume(govNode.consumerTotalLitres)}</td>
-                <td>--</td>
-                <td><span className="status" style={{ fontSize: '0.6rem' }}>AGGREGATED</span></td>
-              </tr>
-
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Unaccounted Loss</td>
-                <td>{formatVolume(govNode.flowDifference)}</td>
-                <td>--</td>
-                <td><span className={`status ${govNode.flowDifference > 1.0 ? 'dirty' : ''}`} style={{ fontSize: '0.6rem' }}>{govNode.flowDifference > 1.0 ? 'LOSS DETECTED' : 'STABLE'}</span></td>
-              </tr>
-
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>Turbidity Sensor</td>
-                <td>{(govNode.turbidityVoltage || 0).toFixed(2)}</td>
-                <td>Volts</td>
-                <td><span className={govNode.turbidityConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.turbidityConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '0.8rem 1rem', fontWeight: 600 }}>TDS Sensor</td>
-                <td>{(govNode.tdsValue || 0).toFixed(1)}</td>
-                <td>ppm</td>
-                <td><span className={govNode.tdsConnected ? "status" : "status offline"} style={{ fontSize: '0.6rem' }}>{govNode.tdsConnected ? 'CONNECTED' : 'DISCONNECTED'}</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ==========================
   // CONSUMERS REGISTRY
