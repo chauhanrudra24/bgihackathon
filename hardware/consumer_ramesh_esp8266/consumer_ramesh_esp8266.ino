@@ -82,7 +82,9 @@ void setEmergency(bool state, const char* source) {
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
   if (emergencyActive) {
-    emergencyValue = 0.1; // 100ml quota per activation
+    // Unlimited SOS mode (no quota). ESP tracks litres consumed during SOS.
+    emergencyValue = 0.0;
+    emergencyLitres = 0.0;
   } else {
     // Log to Firestore on deactivation
     FirebaseJson log;
@@ -95,7 +97,8 @@ void setEmergency(bool state, const char* source) {
   }
 
   Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
-  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyValue);
+  // For UI: expose emergencyValue as "SOS litres used" (since we removed quota)
+  Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyValue"), emergencyLitres);
   Firebase.RTDB.setString(&fbdo, F("sensorData/consumer_node/emergencySource"), source);
   digitalWrite(EMERGENCY_LED_PIN, emergencyActive ? HIGH : LOW);
   logAlert("Ramesh", "EMERGENCY", emergencyActive ? "Emergency ENABLED" : "Emergency DISABLED");
@@ -327,11 +330,8 @@ void loop() {
       }
       if (emergencyActive) {
         emergencyLitres += litres;
-        emergencyValue -= litres;
-        if (emergencyValue <= 0) {
-          emergencyValue = 0;
-          setEmergency(false, "SYSTEM_AUTO_STOP");
-        }
+        // No quota: keep emergencyActive until user/admin stops it.
+        emergencyValue = emergencyLitres;
       }
     }
 

@@ -483,9 +483,9 @@ const ConsumerDashboard = () => {
               {emergencyActive && (
                 <div className="card" style={{ gridColumn: '1 / -1', background: 'rgba(239, 68, 68, 0.05)', border: '2px dashed #ef4444' }}>
                    <div style={{ textAlign: 'center', padding: '1rem' }}>
-                      <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER REMAINING</h3>
+                      <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER USED</h3>
                       <div className="value" style={{ fontSize: '2.5rem', color: '#ef4444' }}>
-                        {user.hasSensor !== false ? formatVolume(emergencyValue) : `${Math.floor(emergencyValue)} sec`}
+                        {user.hasSensor !== false ? formatVolume(myNodeData?.emergencyLitres || 0) : `${Math.floor(emergencyValue)} sec`}
                       </div>
 
                    </div>

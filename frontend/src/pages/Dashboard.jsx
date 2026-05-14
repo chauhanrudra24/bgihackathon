@@ -1086,7 +1086,7 @@ const Dashboard = () => {
                       // STOP command
                       set(ref(db, `commands/${id}/sosActive`), false);
                     } else {
-                      // START command (Pulse + State)
+                      // START command (same as physical button; no "permission" gating)
                       set(ref(db, `commands/${id}/triggerEmergency`), true);
                       set(ref(db, `commands/${id}/sosActive`), true);
                     }
