@@ -83,8 +83,15 @@ void setEmergency(bool state, const char* source) {
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
   if (emergencyActive) {
-    emergencyValue = 60.0; // 60 seconds quota per activation
+    // Physical trigger gets 300s (5 min), Web trigger stays at 60s default
+    if (strcmp(source, "PHYSICAL_BUTTON_HOLD") == 0) {
+      emergencyValue = 300.0; 
+    } else {
+      emergencyValue = 60.0; 
+    }
     lastEmergencyTick = millis();
+    // Sync to Command path to prevent immediate override by loop sync
+    Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node_8266/sosActive"), true);
   } else {
     // Log to Firestore on completion
     FirebaseJson log;

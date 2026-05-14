@@ -82,9 +82,15 @@ void setEmergency(bool state, const char* source) {
   Serial.printf("SOS EMERGENCY [%s]: %s\n", source, emergencyActive ? "ON" : "OFF");
   
   if (emergencyActive) {
-    // Unlimited SOS mode (no quota). ESP tracks litres consumed during SOS.
-    emergencyValue = 0.0;
+    // Physical trigger gets a 10L emergency quota
+    if (strcmp(source, "PHYSICAL_BUTTON_HOLD") == 0) {
+      emergencyValue = 10.0; 
+    } else {
+      emergencyValue = 0.0; // Unlimited for web trigger unless specified
+    }
     emergencyLitres = 0.0;
+    // Sync to Command path to prevent immediate override by loop sync
+    Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/sosActive"), true);
   } else {
     // Log to Firestore on deactivation
     FirebaseJson log;
@@ -352,8 +358,18 @@ void loop() {
       }
       if (emergencyActive) {
         emergencyLitres += litres;
-        // No quota: keep emergencyActive until user/admin stops it.
-        emergencyValue = emergencyLitres;
+        // If we have a quota (physical trigger), count down
+        if (emergencyValue > 0 && emergencyValue <= 10.01) { 
+           float remaining = 10.0 - emergencyLitres;
+           if (remaining <= 0) {
+             remaining = 0;
+             setEmergency(false, "QUOTA_EXHAUSTED");
+           }
+           emergencyValue = remaining;
+        } else {
+           // No quota or web trigger: show usage
+           emergencyValue = emergencyLitres;
+        }
       }
     }
 
