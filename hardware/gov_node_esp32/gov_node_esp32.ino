@@ -40,10 +40,12 @@ String theftStatus = "NORMAL";
 unsigned long theftAlertStartTime = 0;
 bool theftFlaggedGlobal = false;
 
-// Theft detection tuning (reduce false positives on jitter)
-const float GOV_FLOW_ACTIVE_LPM = 0.8;      // Gov supply must be meaningfully on
-const float RAMESH_ZERO_LPM     = 0.01;     // Treat <= 0.01 L/min as "no flow"
-const unsigned long THEFT_PERSIST_MS = 12000; // Require ~12s sustained condition before flag
+// Theft detection tuning (user requirement)
+// Rule: If gov flow > 0 and Ramesh valve is open, but Ramesh flow is ~0 for 5s -> countdown then flag.
+// If gov flow is 0 -> ignore/reset theft detection.
+const float GOV_FLOW_ACTIVE_LPM = 0.25;        // "Gov flow ON" threshold (L/min)
+const float RAMESH_ZERO_LPM     = 0.01;        // Treat <= 0.01 L/min as "no flow"
+const unsigned long THEFT_PERSIST_MS = 5000;   // 5s persistence before flag
 
 void IRAM_ATTR flowPulseISR() {
   static unsigned long lastPulse = 0;
@@ -232,16 +234,15 @@ void loop() {
     // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's node)
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
-    // Powerful theft rule (Ramesh bypass):
-    // Flag ONLY when:
-    // - Gov supply is actively flowing (>= GOV_FLOW_ACTIVE_LPM)
-    // - Ramesh valves are open (gov+user true)
-    // - Ramesh reports near-zero flow (<= RAMESH_ZERO_LPM)
-    // - Persisted for THEFT_PERSIST_MS (prevents instant flag on sensor jitter)
-    // - (Optional) Priya closed to avoid false blame; if Priya open, we don't flag Ramesh
+    // Theft rule (Ramesh):
+    // - If gov supply is ON (flowRate > threshold)
+    // - AND Ramesh valve is open (gov+user)
+    // - AND Ramesh flow is near-zero
+    // - sustained for 5s => flag.
+    // - If gov supply is OFF => reset/ignore (no theft detection).
     bool potentialTheft = false;
     if (flowRate >= GOV_FLOW_ACTIVE_LPM) {
-      if (rameshOpen && !priyaOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
+      if (rameshOpen && rameshOnline && rameshFlow <= RAMESH_ZERO_LPM) {
         potentialTheft = true;
       }
     }
@@ -255,7 +256,7 @@ void loop() {
           theftStatus = "THEFT FLAGGED";
           
           String targetNode = "consumer_node"; // Default to Ramesh
-          String reason = "Gov supply active but Ramesh flow near-zero (sustained). Possible bypass/leak.";
+          String reason = "Gov flow ON but Ramesh flow near-zero for 5s (valve open). Possible bypass/leak.";
           
           logAlert("Ramesh", "THEFT", "Ramesh bypass suspected: Gov supply active, valves open, but meter reports near-zero flow (persistent).");
 
