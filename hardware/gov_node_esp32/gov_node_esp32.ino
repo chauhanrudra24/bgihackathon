@@ -45,13 +45,12 @@ const float GOV_FLOW_ACTIVE_LPM = 0.5;        // Supply must be meaningfully ON
 const float RAMESH_ZERO_LPM     = 0.02;       // Flow < 0.02 is "Zero" for theft logic
 const unsigned long THEFT_PERSIST_MS = 5000;   // Exactly 5s timer
 
-static float jsonToFloat(const FirebaseJsonData &d) {
-  // FirebaseJsonData sometimes stores numeric values as int/double/string.
+static float jsonToFloat(FirebaseJsonData &d) {
+  // FirebaseJsonData::to<T>() is not a const member, so we take a non-const reference.
   if (!d.success) return 0.0f;
   if (d.typeNum == FirebaseJson::JSON_STRING) {
     return d.stringValue.toFloat();
   }
-  // `to<double>()` handles int/double
   return (float)d.to<double>();
 }
 
