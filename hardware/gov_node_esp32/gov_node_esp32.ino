@@ -181,13 +181,9 @@ void loop() {
     theftCheckMillis = millis();
     
     // PERSISTENT FETCH: Retain last known values if network fails
-    static float rameshFlow = 0.0;
-    static float rameshTotal = 0.0;
-    static bool rTamper = false;
-    static float priyaTotal = 0.0;
-    static bool rValveUser = true, rValveGov = true;
-    static bool pValveUser = true, pValveGov = true;
-    static unsigned long rameshLastSeen = 0;
+    float rameshFlow = 0, rameshTotal = 0, priyaTotal = 0;
+    bool rTamper = false, rAccountFlagged = false;
+    unsigned long rameshLastSeen = 0;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
@@ -197,6 +193,19 @@ void loop() {
       if (res.get(d, F("consumer_node/tamperDetected"))) rTamper = d.boolValue;
       if (res.get(d, F("consumer_node/lastSeen"))) rameshLastSeen = (unsigned long)jsonToFloat(d);
       if (res.get(d, F("consumer_node_8266/totalLitres"))) priyaTotal = jsonToFloat(d);
+    }
+
+    // NEW: Check if Admin has cleared the flag in Accounts
+    if (Firebase.RTDB.getJSON(&fbdo, F("accounts/consumer_node"))) {
+      FirebaseJson &res = fbdo.jsonObject();
+      FirebaseJsonData d;
+      if (res.get(d, F("theftFlagged"))) rAccountFlagged = d.boolValue;
+    }
+    
+    // Sync local status with cloud flag: If DB says not flagged, we reset local status
+    if (!rAccountFlagged && theftStatus == "THEFT FLAGGED") {
+      theftStatus = "NORMAL";
+      theftAlertStartTime = 0;
     }
 
     if (Firebase.RTDB.getJSON(&fbdo, F("valves"))) {
