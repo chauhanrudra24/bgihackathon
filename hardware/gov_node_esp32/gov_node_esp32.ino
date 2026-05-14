@@ -184,8 +184,8 @@ void loop() {
     lastFlowCalc = millis();
   }
 
-  // ---- 3. ADVANCED THEFT DETECTION (every 5s) ----
-  if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
+  // ---- 3. ADVANCED THEFT DETECTION (every 1s for instant response) ----
+  if (Firebase.ready() && (millis() - theftCheckMillis > 1000)) {
     theftCheckMillis = millis();
 
     // PERSISTENT FETCH: Retain last known values if network fails
@@ -218,6 +218,13 @@ void loop() {
         rAccountFlagged = d.boolValue;
     }
 
+    // AUTO-CLEAR: If flow returns (>0.05), auto-reset the flag
+    if (rAccountFlagged && rameshFlow > 0.05) {
+        rAccountFlagged = false;
+        Firebase.RTDB.setBool(&fbdo, F("accounts/consumer_node/theftFlagged"), false);
+        Firebase.RTDB.setString(&fbdo, F("accounts/consumer_node/theftReason"), "Auto-cleared: Flow resumed.");
+    }
+    
     // Sync local status with cloud flag: If DB says not flagged, we reset local
     // status
     if (!rAccountFlagged && theftStatus == "THEFT FLAGGED") {
@@ -243,15 +250,7 @@ void loop() {
 
     // Consider Ramesh offline if no heartbeat in 60s (avoid false theft when
     // node is down)
-    bool rameshOnline = false;
-    if (rameshLastSeen > 0) {
-      unsigned long nowMs = millis();
-      // `lastSeen` in DB is epoch ms; compare using system millis is not
-      // possible reliably, so treat "present and non-zero" as online for theft
-      // logic. Firmware-side time bases differ. Instead, we guard using valve
-      // state + flow stability below.
-      rameshOnline = true;
-    }
+    bool rameshOnline = true; // Simplified for responsiveness
 
     // Aggregate Data
     float consumerTotalLitres = rameshTotal + priyaTotal;
@@ -269,14 +268,6 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // IMPROVED RULE:
-    // Theft is flagged IF:
-    // 1. Flow > 0.25 (Main supply active)
-    // 2. AND BOTH valves are closed (Significant Leak/Bypass)
-    // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's
-    // node)
-    // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
-
     // SIMPLE THEFT LOGIC: 
     // If Gov Node is detecting flow (>0.1 L/min) 
     // AND Ramesh meter is COMPLTLY 0 (or <0.01 noise floor) 
@@ -287,11 +278,11 @@ void loop() {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-        Serial.println(F("THEFT SUSPECTED: Starting 5s verification timer."));
+        Serial.println(F("THEFT SUSPECTED: Timer started."));
       } else if (millis() - theftAlertStartTime > 5000) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
-          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s). Bypass suspected.";
+          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s).";
           logAlert("Ramesh", "THEFT", reason.c_str());
 
           FirebaseJson updates;
@@ -304,7 +295,7 @@ void loop() {
     } else {
       // RESET ALL if flow returns or gov stops
       if (theftAlertStartTime > 0) {
-        Serial.printf("Theft verification ABORTED. Gov:%.2f, Ramesh:%.2f\n", flowRate, rameshFlow);
+        Serial.printf("Aborted. Gov:%.2f, Ramesh:%.2f\n", flowRate, rameshFlow);
       }
       theftAlertStartTime = 0;
       // If it was pending, reset to Normal. 
