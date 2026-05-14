@@ -225,20 +225,21 @@ void loop() {
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
   }
 
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 10000)) {
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 5000)) {
     sendDataPrevMillis = millis();
     long tSum = 0;
-    for (int i = 0; i < 10; i++) { tSum += analogRead(TURBIDITY_PIN); delayMicroseconds(100); }
-    float tVolts = (tSum / 10.0) * (3.3 / 4095.0);
+    for (int i = 0; i < 20; i++) { tSum += analogRead(TURBIDITY_PIN); delayMicroseconds(50); }
+    float tVolts = (tSum / 20.0) * (3.3 / 4095.0);
+    
     long dSum = 0;
-    for (int i = 0; i < 10; i++) { dSum += analogRead(TDS_PIN); delayMicroseconds(100); }
-    float dVolts = (dSum / 10.0) * (3.3 / 4095.0);
-    float tds = (133.42 * dVolts * dVolts * dVolts - 255.86 * dVolts * dVolts + 857.39 * dVolts) * 0.5;
+    for (int i = 0; i < 20; i++) { dSum += analogRead(TDS_PIN); delayMicroseconds(50); }
+    float dVolts = (dSum / 20.0) * (3.3 / 4095.0);
+    float tds = (133.42 * dVolts * dVolts * dVolts - 255.86 * dVolts * dVolts + 857.39 * dVolts);
 
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), tVolts);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tds);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), (tds > 1.0));
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), (tVolts > 0.1));
-    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), (tVolts > 3.0) ? "CLEAR" : "DIRTY");
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), (dVolts > 0.05));
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), (tVolts > 0.05));
+    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"), (tVolts > 2.5) ? "CLEAR" : "DIRTY");
   }
 }

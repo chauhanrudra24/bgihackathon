@@ -306,17 +306,20 @@ const ConsumerDashboard = () => {
   const renderQualityCard = (sensorData, title) => {
     if (!sensorData) return null;
     const online = isNodeOnline(sensorData?.lastSeen);
-
     const tdsConnected = sensorData.tdsConnected === true;
-    const tds = tdsConnected ? (sensorData.tdsValue || 0) : 0;
+    const tdsValue = Number(sensorData.tdsValue || 0);
+    const turbConnected = sensorData.turbidityConnected === true;
+    const turbVoltage = Number(sensorData.turbidityVoltage || 0);
+    const waterStatus = sensorData.waterStatus || "UNKNOWN";
+
     let tdsQuality = tdsConnected ? "GOOD" : "NOT CONNECTED";
     let tdsClass = tdsConnected ? "status" : "status offline";
 
     if (tdsConnected) {
-      if (tds <= 50) tdsQuality = "EXCELLENT";
-      else if (tds <= 150) tdsQuality = "IDEAL";
-      else if (tds <= 300) tdsQuality = "GOOD";
-      else if (tds <= 500) {
+      if (tdsValue <= 50) tdsQuality = "EXCELLENT";
+      else if (tdsValue <= 150) tdsQuality = "IDEAL";
+      else if (tdsValue <= 300) tdsQuality = "GOOD";
+      else if (tdsValue <= 500) {
           tdsQuality = "FAIR";
           tdsClass = "status warning";
       } else {
@@ -325,13 +328,10 @@ const ConsumerDashboard = () => {
       }
     }
 
-    const turbConnected = sensorData.turbidityConnected === true;
-    const turbVoltage = turbConnected ? (sensorData.turbidityVoltage || 0) : 0;
-    const turbStatus = turbConnected ? (sensorData.waterStatus || "UNKNOWN") : "NOT CONNECTED";
-    
+    const turbStatus = turbConnected ? waterStatus : "NOT CONNECTED";
     let turbClass = "status";
     if (!turbConnected) turbClass = "status offline";
-    else if (sensorData.waterStatus === 'DIRTY') turbClass = "status dirty";
+    else if (waterStatus === 'DIRTY') turbClass = "status dirty";
 
     let finalQuality = "ACCEPTABLE";
     let finalClass = "status";
@@ -339,13 +339,16 @@ const ConsumerDashboard = () => {
     if (!turbConnected || !tdsConnected) {
       finalQuality = "SENSOR ERROR";
       finalClass = "status warning";
-    } else if (sensorData.waterStatus === 'DIRTY') {
+    } else if (turbStatus === 'NOT CONNECTED' || tdsQuality === 'NOT CONNECTED') {
+      finalQuality = "SENSOR DISCONNECTED";
+      finalClass = "status offline";
+    } else if (waterStatus === 'DIRTY') {
         finalQuality = "UNSAFE (DIRTY)";
         finalClass = "status dirty";
     } else {
-        if (tds <= 150) finalQuality = "ULTRA-PURE";
-        else if (tds <= 300) finalQuality = "GOOD QUALITY";
-        else if (tds <= 500) {
+        if (tdsValue <= 150) finalQuality = "ULTRA-PURE";
+        else if (tdsValue <= 300) finalQuality = "GOOD QUALITY";
+        else if (tdsValue <= 500) {
             finalQuality = "MINERAL HEAVY";
             finalClass = "status warning";
         } else {
@@ -366,7 +369,7 @@ const ConsumerDashboard = () => {
           <div className="card">
               <h3>TDS Level</h3>
               <div className="value">
-                {tdsConnected ? tds.toFixed(2) : "--"}
+                {tdsValue > 0 ? tdsValue.toFixed(0) : "--"}
                 <span className="unit">ppm</span>
               </div>
               <div className={tdsClass}>{tdsQuality}</div>
