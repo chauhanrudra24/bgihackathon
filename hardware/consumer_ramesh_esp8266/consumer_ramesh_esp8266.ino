@@ -28,8 +28,8 @@ bool mpuInitialized = false;
 unsigned long lastTamperTime = 0;
 float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
 const float TAMPER_THRESHOLD =
-    0.5; // Max sensitivity for instant vibration detection
-const float SHOCK_THRESHOLD = 1.0; // Instant trigger on physical touch
+    0.2; // Max sensitivity for instant vibration detection
+const float SHOCK_THRESHOLD = 0.8; // Instant trigger on physical touch
 
 // ========================= HARDWARE PINS =========================
 #define RELAY_PIN D3

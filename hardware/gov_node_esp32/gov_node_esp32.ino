@@ -237,12 +237,16 @@ void loop() {
     }
     lastAccountFlagged = rAccountFlagged;
 
-    bool inGracePeriod = (gracePeriodStart > 0 && (millis() - gracePeriodStart < 30000));
-    if (inGracePeriod && rameshFlow > 0.01) {
-       // Optional: end grace early if flow is confirmed
-       // gracePeriodStart = 0; 
+    static bool lastRameshOpen = false;
+    bool currentRameshOpen = (rValveUser && rValveGov);
+    if (currentRameshOpen && !lastRameshOpen) {
+       gracePeriodStart = millis(); // Start 30s grace period when valve opens
+       Serial.println(F("VALVE OPENED: Starting 30s grace period for Ramesh."));
     }
+    lastRameshOpen = currentRameshOpen;
 
+    bool inGracePeriod = (gracePeriodStart > 0 && (millis() - gracePeriodStart < 30000));
+    
     if (Firebase.RTDB.getJSON(&fbdo, F("valves"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
@@ -255,13 +259,6 @@ void loop() {
       if (res.get(d, F("consumer_node_8266/gov")))
         pValveGov = d.boolValue;
     }
-
-    bool rameshOpen = (rValveUser && rValveGov);
-    bool priyaOpen = (pValveUser && pValveGov);
-
-    // Consider Ramesh offline if no heartbeat in 60s (avoid false theft when
-    // node is down)
-    bool rameshOnline = true; // Simplified for responsiveness
 
     // Aggregate Data
     float consumerTotalLitres = rameshTotal + priyaTotal;
@@ -279,48 +276,49 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // NEW BINARY THEFT LOGIC: 
-    // If Gov Node detects ANY flow (> GOV_FLOW_ACTIVE_LPM) 
-    // AND Ramesh meter is COMPLTLY 0 (< RAMESH_ZERO_LPM) 
-    // for 5 seconds -> Flag as Theft.
-    bool potentialTheft = (flowRate > GOV_FLOW_ACTIVE_LPM && rameshFlow < RAMESH_ZERO_LPM);
+    // THEFT LOGIC: 
+    // Mark as theft ONLY IF:
+    // 1. Ramesh is zero (< 0.01)
+    // 2. FOR 5 SECONDS
+    // 3. AND Gov is NOT zero (> 0.01)
+    // 4. AND we are NOT in grace period
+    
+    bool rameshZero = (rameshFlow < RAMESH_ZERO_LPM);
+    bool govActive = (flowRate > GOV_FLOW_ACTIVE_LPM);
 
-    // Debugging
-    if (potentialTheft && !inGracePeriod) {
-       Serial.printf("Theft Condition: Gov=%.2f, Ramesh=%.2f (Timer: %lu ms)\n", 
-                     flowRate, rameshFlow, (theftAlertStartTime > 0) ? (millis() - theftAlertStartTime) : 0);
-    }
-
-    if (potentialTheft && !inGracePeriod) {
+    if (rameshZero && !inGracePeriod) {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-        Serial.println(F("THEFT SUSPECTED: Timer started (Gov > 0, Ramesh == 0)."));
+        Serial.println(F("RAMESH ZERO: Starting 5s verification..."));
       } else if (millis() - theftAlertStartTime > THEFT_PERSIST_MS) { 
-        if (theftStatus != "THEFT FLAGGED") {
-          theftStatus = "THEFT FLAGGED";
-          String reason = "Main supply active but no consumer flow detected (Persistent 5s).";
-          logAlert("Ramesh", "THEFT", reason.c_str());
+        // 5 seconds reached! Now check Gov Node.
+        if (govActive) {
+          if (theftStatus != "THEFT FLAGGED") {
+            theftStatus = "THEFT FLAGGED";
+            String reason = "Main supply active but no consumer flow detected (Persistent 5s).";
+            logAlert("Ramesh", "THEFT", reason.c_str());
 
-          FirebaseJson updates;
-          updates.set("valves/consumer_node/gov", false);
-          updates.set("accounts/consumer_node/theftFlagged", true);
-          updates.set("accounts/consumer_node/theftReason", reason);
-          Firebase.RTDB.updateNode(&fbdo, "/", &updates);
+            FirebaseJson updates;
+            updates.set("valves/consumer_node/gov", false);
+            updates.set("accounts/consumer_node/theftFlagged", true);
+            updates.set("accounts/consumer_node/theftReason", reason);
+            Firebase.RTDB.updateNode(&fbdo, "/", &updates);
+            Serial.println(F("!!! THEFT DETECTED: Gov active, Ramesh zero. !!!"));
+          }
+        } else {
+          // Gov is also zero, so not theft. Just reset.
+          theftAlertStartTime = 0;
+          if (theftStatus == "PENDING_ALERT") theftStatus = "NORMAL";
         }
       }
     } else {
-      // RESET ALL if flow returns or gov stops or in grace
+      // Ramesh is flowing or we are in grace -> Not theft.
       if (theftAlertStartTime > 0) {
-        Serial.printf("Aborted/Grace. Gov:%.2f, Ramesh:%.2f, Grace:%s\n", 
-                      flowRate, rameshFlow, inGracePeriod ? "YES" : "NO");
+        Serial.printf("Theft Aborted: Flow=%.2f, Grace=%s\n", rameshFlow, inGracePeriod ? "YES" : "NO");
       }
       theftAlertStartTime = 0;
-      // If it was pending, reset to Normal. 
-      // If it was already flagged, it stays flagged until Admin clears rAccountFlagged.
-      if (theftStatus == "PENDING_ALERT") {
-        theftStatus = "NORMAL";
-      }
+      if (theftStatus == "PENDING_ALERT") theftStatus = "NORMAL";
     }
 
     // Batch Update Status (Telemetery)
