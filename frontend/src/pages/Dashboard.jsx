@@ -1086,8 +1086,41 @@ const Dashboard = () => {
     }).catch(err => console.error('Theft flag failed:', err));
   }, [theftDetected, accounts]);
 
-  if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
-  if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
+  if (errorMsg) return (
+    <div className="dashboard" style={{ textAlign: 'center', padding: '4rem' }}>
+      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+      <h2 style={{ color: 'var(--danger)' }}>System Connectivity Error</h2>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>{errorMsg}</p>
+      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+        <button onClick={() => window.location.reload()} className="submit-btn" style={{ maxWidth: '200px' }}>🔄 Retry Connection</button>
+        <button onClick={handleLogout} className="logout-btn">🚪 Logout</button>
+      </div>
+    </div>
+  );
+
+  if (!data) return (
+    <div className="dashboard" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
+      <div className="sync-timer-ring" style={{ width: '80px', height: '80px', marginBottom: '2rem' }}>
+        <svg viewBox="0 0 36 36" className="circular-chart primary pulse">
+          <path className="circle" strokeDasharray="100, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+        </svg>
+      </div>
+      <h2 style={{ marginBottom: '1rem', background: 'linear-gradient(135deg, var(--primary), var(--accent))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+        Connecting to Jal Board Network...
+      </h2>
+      <p style={{ color: 'var(--text-secondary)', maxWidth: '400px' }}>
+        Synchronizing real-time sensor data from the smart water grid infrastructure.
+      </p>
+      
+      {/* Troubleshooting hint if it takes too long */}
+      <div className="animate-fade-in" style={{ marginTop: '3rem', opacity: 0.7, animationDelay: '5s' }}>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Taking too long? Check your internet or ad-blocker settings.</p>
+        <button onClick={() => window.location.reload()} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline' }}>
+          Force Refresh
+        </button>
+      </div>
+    </div>
+  );
 
   // Gather flagged consumers for the theft list
   const flaggedConsumers = CONSUMER_NODES.filter(({ nodeId }) => {

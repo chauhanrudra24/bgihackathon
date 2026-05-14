@@ -317,13 +317,17 @@ void loop() {
       }
     }
 
-    // TAMPER
-    bool flowTamper = false;
-    if (!currentValveState && flowRate > 0.3) flowTamper = true;
-    if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 8000)) {
-      tamperDetected = true;
-      logAlert("Ramesh", "TAMPER", "High flow detected while valve CLOSED! Bypass suspected.");
-      Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+    // FLOW TAMPER (Flow detected while valve is CLOSED)
+    static unsigned long flowTamperStart = 0;
+    if (!currentValveState && flowRate > 0.5) {
+      if (flowTamperStart == 0) flowTamperStart = millis();
+      if ((millis() - flowTamperStart > 3000) && !tamperDetected && (millis() - lastValveActionTime > 10000)) {
+        tamperDetected = true;
+        logAlert("Ramesh", "TAMPER", "Confirmed bypass/leak: Sustained flow (>0.5L/min for 3s) while valve CLOSED.");
+        Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+      }
+    } else {
+      flowTamperStart = 0;
     }
 
     lastFlowCalc = millis();
