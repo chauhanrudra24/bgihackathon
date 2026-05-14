@@ -330,42 +330,64 @@ void loop() {
     yield();
   }
 
-  // ---- 3. MPU TAMPER (every 50ms) ----
-  static unsigned long lastMPU = 0;
-  static unsigned long movementStart = 0;
-  static float baseMag = 0.0;
-  if (mpuInitialized && (millis() - lastMPU > 50)) {
-    lastMPU = millis();
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-    float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
-    float mag = sqrtf(ax * ax + ay * ay + az * az);
-    if (baseMag <= 0.001f) baseMag = mag;
-    float dmag = fabsf(mag - baseMag);
-    bool shock = dmag > (shockThreshold * 0.8f);
-    bool touch = dmag > (tamperThreshold * 0.6f);
-
-    if (shock || touch) {
-      if (movementStart == 0) movementStart = millis();
-      unsigned long held = millis() - movementStart;
-      if ((shock && held > 60) || (!shock && held > 700)) {
-        bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
-        if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
-          tamperDetected = true;
-          logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
-          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+    // ---- 3. MPU TAMPER (every 50ms) ----
+    static unsigned long lastMPU = 0;
+    static unsigned long movementStart = 0;
+    static float baseAccelX = 0, baseAccelY = 0, baseAccelZ = 0;
+    static float jerkAccumulator = 0;
+    
+    if (mpuInitialized && (millis() - lastMPU > 50)) {
+        lastMPU = millis();
+        sensors_event_t a, g, temp;
+        mpu.getEvent(&a, &g, &temp);
+        float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
+        
+        // Initialize baseline on first run
+        if (baseAccelX == 0 && baseAccelY == 0 && baseAccelZ == 0) {
+            baseAccelX = ax; baseAccelY = ay; baseAccelZ = az;
         }
-      }
-    } else {
-      movementStart = 0;
+
+        // 1. JERK (Shake) Detection: Measure instant change in acceleration
+        static float prevX = ax, prevY = ay, prevZ = az;
+        float jerk = fabsf(ax - prevX) + fabsf(ay - prevY) + fabsf(az - prevZ);
+        prevX = ax; prevY = ay; prevZ = az;
+        
+        // Leak the accumulator (low-pass)
+        jerkAccumulator = (jerkAccumulator * 0.9f) + jerk;
+
+        // 2. TILT Detection: Measure deviation from baseline gravity vector
+        float dotProduct = (ax * baseAccelX + ay * baseAccelY + az * baseAccelZ);
+        float magCurr = sqrtf(ax*ax + ay*ay + az*az);
+        float magBase = sqrtf(baseAccelX*baseAccelX + baseAccelY*baseAccelY + baseAccelZ*baseAccelZ);
+        float angleCos = dotProduct / (magCurr * magBase);
+        if (angleCos > 1.0f) angleCos = 1.0f;
+        float tiltAngle = acosf(angleCos) * 57.2958f; // Radians to degrees
+
+        // 3. DECISION LOGIC: Use sustained threshold instead of instant trigger
+        bool isMoving = (jerkAccumulator > (tamperThreshold * 2.0f)) || (tiltAngle > 25.0f);
+        
+        if (isMoving) {
+            if (movementStart == 0) movementStart = millis();
+            unsigned long held = millis() - movementStart;
+            
+            // Require 2 seconds of sustained "Real" movement to confirm tamper
+            // Also ignore if user is pressing the button (likely adjusting device)
+            bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+            if (!tamperDetected && !buttonHeld && (held > 2000) && (millis() - lastValveActionTime > 8000)) {
+                tamperDetected = true;
+                logAlert("Ramesh", "TAMPER", "Confirmed displacement/tilt detected (>2s). Valve locked.");
+                Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+            }
+        } else {
+            movementStart = 0;
+            // Slowly adapt baseline to handle natural device settling
+            if (!tamperDetected) {
+                baseAccelX = baseAccelX * 0.999f + ax * 0.001f;
+                baseAccelY = baseAccelY * 0.999f + ay * 0.001f;
+                baseAccelZ = baseAccelZ * 0.999f + az * 0.001f;
+            }
+        }
     }
-    if (!tamperDetected && movementStart == 0) {
-      baseMag = baseMag * 0.98f + mag * 0.02f;
-      baseAccelX = baseAccelX * 0.98 + ax * 0.02;
-      baseAccelY = baseAccelY * 0.98 + ay * 0.02;
-      baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
-    }
-  }
 
   // ---- 4. SETTINGS SYNC (every 15s) ----
   static unsigned long lastSettingsSync = 0;

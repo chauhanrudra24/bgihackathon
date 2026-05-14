@@ -280,34 +280,53 @@ void loop() {
   // ---- 3. TAMPER DETECTION via MPU6050 (every 50ms) ----
   static unsigned long lastMPU = 0;
   static unsigned long movementStart = 0;
-  static float baseMag = 0.0;
+  static float jerkAccumulator = 0;
+  
   if (mpuInitialized && (millis() - lastMPU > 50)) {
     lastMPU = millis();
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
     float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
-    float mag = sqrtf(ax * ax + ay * ay + az * az);
-    if (baseMag <= 0.001f) baseMag = mag;
-    float dmag = fabsf(mag - baseMag);
-    bool shock = dmag > shockThreshold;
-    bool touch = dmag > tamperThreshold;
+    
+    // Initialize baseline on first run
+    if (baseAccelX == 0 && baseAccelY == 0 && baseAccelZ == 0) {
+      baseAccelX = ax; baseAccelY = ay; baseAccelZ = az;
+    }
 
-    if (shock || touch) {
+    // 1. JERK (Shake) Detection
+    static float prevX = ax, prevY = ay, prevZ = az;
+    float jerk = fabsf(ax - prevX) + fabsf(ay - prevY) + fabsf(az - prevZ);
+    prevX = ax; prevY = ay; prevZ = az;
+    jerkAccumulator = (jerkAccumulator * 0.9f) + jerk;
+
+    // 2. TILT Detection
+    float dotProduct = (ax * baseAccelX + ay * baseAccelY + az * baseAccelZ);
+    float magCurr = sqrtf(ax*ax + ay*ay + az*az);
+    float magBase = sqrtf(baseAccelX*baseAccelX + baseAccelY*baseAccelY + baseAccelZ*baseAccelZ);
+    float angleCos = dotProduct / (magCurr * magBase);
+    if (angleCos > 1.0f) angleCos = 1.0f;
+    float tiltAngle = acosf(angleCos) * 57.2958f;
+
+    // 3. DECISION LOGIC (Sustained > 2s)
+    bool isMoving = (jerkAccumulator > (tamperThreshold * 2.0f)) || (tiltAngle > 25.0f);
+    
+    if (isMoving) {
+      if (movementStart == 0) movementStart = millis();
+      unsigned long held = millis() - movementStart;
       bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
-      if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
+      if (!tamperDetected && !buttonHeld && (held > 2000) && (millis() - lastValveActionTime > 8000)) {
         tamperDetected = true;
         lastTamperTime = millis();
-        logAlert("Priya", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
+        logAlert("Priya", "TAMPER", "Confirmed displacement/tilt detected (>2s). Valve locked.");
         Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node_8266/gov"), false); // BLOCK USER
       }
     } else {
       movementStart = 0;
-    }
-    if (!tamperDetected && movementStart == 0) {
-      baseMag = baseMag * 0.98f + mag * 0.02f;
-      baseAccelX = baseAccelX * 0.98 + ax * 0.02;
-      baseAccelY = baseAccelY * 0.98 + ay * 0.02;
-      baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
+      if (!tamperDetected) {
+        baseAccelX = baseAccelX * 0.999f + ax * 0.001f;
+        baseAccelY = baseAccelY * 0.999f + ay * 0.001f;
+        baseAccelZ = baseAccelZ * 0.999f + az * 0.001f;
+      }
     }
   }
 
