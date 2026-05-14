@@ -623,7 +623,7 @@ const ConsumerDashboard = () => {
             background: isBlocked ? 'var(--bg-color)' : !valveData.gov ? 'var(--bg-color)' : 'linear-gradient(135deg, var(--surface-color), var(--primary-light))', 
             border: isBlocked ? '2px solid var(--danger)' : !valveData.gov ? '1px solid var(--border-color)' : '1px solid var(--primary)'
           }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="node-header-flex" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div className="valve-info">
                   <h3 style={{ color: isBlocked ? 'var(--danger)' : !valveData.gov ? 'var(--text-muted)' : 'var(--primary)' }}>
                     {isBlocked ? '🔒 Supply Blocked' : !valveData.gov ? 'Supply Cut' : 'Main Valve'}
@@ -632,14 +632,15 @@ const ConsumerDashboard = () => {
                     {account.theftFlagged ? 'Flagged for suspicious activity' : account.blocked ? 'Blocked by authority' : balance <= 0 ? 'Insufficient balance' : !valveData.gov ? 'Government Override Active' : (myNodeOnline ? 'Active Control' : 'Device Offline')}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', width: '100%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   <button 
                     onClick={triggerEmergency}
                     className={`emergency-btn ${emergencyActive ? 'active' : ''}`}
                     style={{ 
                       background: emergencyActive ? 'var(--danger)' : '#fee2e2', 
                       color: emergencyActive ? 'white' : 'var(--danger)',
-                      border: 'none', padding: '0.6rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem'
+                      border: 'none', padding: '0.6rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, cursor: 'pointer', fontSize: '0.8rem',
+                      flex: '1', minWidth: '100px'
                     }}
                   >
                     {emergencyActive ? "🛑 STOP SOS" : "🆘 SOS"}
@@ -648,7 +649,7 @@ const ConsumerDashboard = () => {
                     disabled={!myNodeOnline || !valveData.gov || isBlocked}
                     onClick={toggleValve} 
                     className={`valve-btn ${valveData.user ? 'open' : 'closed'}`}
-                    style={{ padding: '0.6rem 1.5rem' }}
+                    style={{ padding: '0.6rem 1.5rem', flex: '1', minWidth: '100px' }}
                   >
                     {isBlocked ? "LOCKED" : !valveData.gov ? "LOCKED" : (valveData.user ? "CLOSE" : "OPEN")}
                   </button>
@@ -657,7 +658,7 @@ const ConsumerDashboard = () => {
           </div>
 
           {/* Real-time Flow & Graph Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem', marginBottom: '2rem' }}>
+          <div className="responsive-grid-2-1" style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem', marginBottom: '2rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <FlowMeterCard 
                 flowRate={myNodeData?.flowRate} 
@@ -717,7 +718,7 @@ const ConsumerDashboard = () => {
         </section>
 
         {/* Usage & Recharge History Section */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2.5rem' }}>
+        <div className="history-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2.5rem' }}>
           {/* Usage History */}
           <div className="card">
             <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
