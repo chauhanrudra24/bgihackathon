@@ -300,11 +300,11 @@ void loop() {
     }
   }
 
-  // ---- 3. TAMPER DETECTION via MPU6050 (every 500ms) ----
+  // ---- 3. TAMPER DETECTION via MPU6050 (every 50ms) ----
   static unsigned long lastMPU = 0;
   static unsigned long movementStart = 0;
   static float baseMag = 0.0;
-  if (mpuInitialized && (millis() - lastMPU > 500)) {
+  if (mpuInitialized && (millis() - lastMPU > 50)) {
     lastMPU = millis();
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);

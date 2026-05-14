@@ -381,49 +381,6 @@ void loop() {
     bool flowTamper = false;
     if (!currentValveState && flowRate > 0.3) flowTamper = true;
 
-    // MPU algorithm:
-    // - Use magnitude delta (less axis-noise sensitive)
-    // - Require sustained "touch" for ~700ms, or instant for large shocks
-    static unsigned long movementStart = 0;
-    static float baseMag = 0.0;
-    if (mpuInitialized) {
-      sensors_event_t a, g, temp;
-      mpu.getEvent(&a, &g, &temp);
-      float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
-      float mag = sqrtf(ax * ax + ay * ay + az * az);
-      if (baseMag <= 0.001f) baseMag = mag;
-
-      float dmag = fabsf(mag - baseMag);
-      bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
-      bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
-
-      if (shock || touch) {
-        if (movementStart == 0) movementStart = millis();
-        unsigned long held = millis() - movementStart;
-        if ((shock && held > 60) || (!shock && held > 700)) {
-          // Suppress tamper when: recently toggled valve (relay vibration),
-          // or physical button is currently held down.
-          bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
-          if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
-            tamperDetected = true;
-            lastTamperTime = millis();
-            logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
-            Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
-          }
-        }
-      } else {
-        movementStart = 0;
-      }
-
-      // Baseline adapts slowly only when stable (reduces noise false triggers)
-      if (!tamperDetected && movementStart == 0) {
-        baseMag = baseMag * 0.98f + mag * 0.02f;
-        baseAccelX = baseAccelX * 0.98 + ax * 0.02;
-        baseAccelY = baseAccelY * 0.98 + ay * 0.02;
-        baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
-      }
-    }
-
     if (flowTamper && !tamperDetected && (millis() - lastValveActionTime > 8000)) {
       if (flowRate > 1.5) {
         tamperDetected = true;
@@ -433,6 +390,46 @@ void loop() {
     }
     lastFlowCalc = millis();
     yield();
+  }
+
+  // ---- 2b. TAMPER DETECTION via MPU6050 (every 50ms) ----
+  static unsigned long lastMPU = 0;
+  static unsigned long movementStart = 0;
+  static float baseMag = 0.0;
+  if (mpuInitialized && (millis() - lastMPU > 50)) {
+    lastMPU = millis();
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    float ax = a.acceleration.x, ay = a.acceleration.y, az = a.acceleration.z;
+    float mag = sqrtf(ax * ax + ay * ay + az * az);
+    if (baseMag <= 0.001f) baseMag = mag;
+
+    float dmag = fabsf(mag - baseMag);
+    bool shock = dmag > (SHOCK_THRESHOLD * 0.8f);
+    bool touch = dmag > (TAMPER_THRESHOLD * 0.6f);
+
+    if (shock || touch) {
+      if (movementStart == 0) movementStart = millis();
+      unsigned long held = millis() - movementStart;
+      if ((shock && held > 60) || (!shock && held > 700)) {
+        bool buttonHeld = (digitalRead(EMERGENCY_BUTTON_PIN) == LOW);
+        if (!tamperDetected && !buttonHeld && (millis() - lastValveActionTime > 8000)) {
+          tamperDetected = true;
+          lastTamperTime = millis();
+          logAlert("Ramesh", "TAMPER", "Physical touch / displacement detected (MPU). Blocking valve.");
+          Firebase.RTDB.setBool(&fbdo, F("valves/consumer_node/gov"), false);
+        }
+      }
+    } else {
+      movementStart = 0;
+    }
+
+    if (!tamperDetected && movementStart == 0) {
+      baseMag = baseMag * 0.98f + mag * 0.02f;
+      baseAccelX = baseAccelX * 0.98 + ax * 0.02;
+      baseAccelY = baseAccelY * 0.98 + ay * 0.02;
+      baseAccelZ = baseAccelZ * 0.98 + az * 0.02;
+    }
   }
 
   // ---- 3. SETTINGS SYNC (every 15s) ----
