@@ -1254,7 +1254,6 @@ const Dashboard = () => {
                 updates[`valves/${id}/gov`] = true; // Unblock automatically
                 updates[`accounts/${id}/theftFlagged`] = false; // Also clear any associated theft flags
                 update(ref(db), updates);
-                showPopup({ title: 'Tamper Cleared', message: `Tamper flag cleared for ${name}. Valve unblocked and MPU baseline recalibrated.`, icon: '✅', onConfirm: closePopup });
               }}
               onToggleEmergency={(id, name) => {
                 const isActive = data[id]?.emergencyActive || false;
