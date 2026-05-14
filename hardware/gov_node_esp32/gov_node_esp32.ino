@@ -256,7 +256,7 @@ void loop() {
           theftStatus = "THEFT FLAGGED";
           String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s). Bypass suspected.";
           
-          logAlert("Ramesh", "THEFT", reason);
+          logAlert("Ramesh", "THEFT", reason.c_str());
 
           FirebaseJson updates;
           updates.set("valves/consumer_node/gov", false);
