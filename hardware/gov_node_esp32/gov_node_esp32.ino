@@ -183,6 +183,8 @@ void loop() {
     // PERSISTENT FETCH: Retain last known values if network fails
     float rameshFlow = 0, rameshTotal = 0, priyaTotal = 0;
     bool rTamper = false, rAccountFlagged = false;
+    bool rValveUser = true, rValveGov = true;
+    bool pValveUser = true, pValveGov = true;
     unsigned long rameshLastSeen = 0;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
