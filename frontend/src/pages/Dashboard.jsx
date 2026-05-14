@@ -71,9 +71,9 @@ const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference, a
           Unaccounted: <strong>{difference?.toFixed(2) || 0} L</strong>
         </p>
         {isPending && (
-          <div className="theft-countdown-box">
-             <div className="countdown-timer">{countdown}</div>
-             <div className="countdown-label">Seconds remaining</div>
+          <div className="theft-countdown-box" style={{ background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', marginLeft: '1rem', border: '1px solid rgba(255,255,255,0.3)' }}>
+             <div className="countdown-timer" style={{ fontSize: '1.2rem', fontWeight: 800 }}>{countdown}s</div>
+             <div className="countdown-label" style={{ fontSize: '0.6rem', textTransform: 'uppercase', opacity: 0.8 }}>Verifying...</div>
           </div>
         )}
       </div>
@@ -1074,25 +1074,14 @@ const Dashboard = () => {
               }}
               onToggleEmergency={(id, name) => {
                 const isActive = data[id]?.emergencyActive || false;
-                showPopup({
-                  title: isActive ? "Stop Emergency" : "Emergency Override",
-                  message: isActive ? `Stop emergency supply for ${name}?` : `Grant emergency water access to ${name}? This will provide 100ml of water even if blocked.`,
-                  icon: "🆘",
-                  confirmText: isActive ? "Stop Now" : "Grant Access",
-                  cancelText: "Cancel",
-                  onCancel: closePopup,
-                  onConfirm: () => {
-                    if (isActive) {
-                      // STOP command
-                      set(ref(db, `commands/${id}/sosActive`), false);
-                    } else {
-                      // START command (same as physical button; no "permission" gating)
-                      set(ref(db, `commands/${id}/triggerEmergency`), true);
-                      set(ref(db, `commands/${id}/sosActive`), true);
-                    }
-                    closePopup();
-                  }
-                });
+                if (isActive) {
+                  set(ref(db, `commands/${id}/sosActive`), false);
+                  toast.success(`SOS Stopped for ${name}`);
+                } else {
+                  set(ref(db, `commands/${id}/triggerEmergency`), true);
+                  set(ref(db, `commands/${id}/sosActive`), true);
+                  toast.success(`SOS Started for ${name}`);
+                }
               }}
             />
           ))}

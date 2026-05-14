@@ -40,12 +40,10 @@ String theftStatus = "NORMAL";
 unsigned long theftAlertStartTime = 0;
 bool theftFlaggedGlobal = false;
 
-// Theft detection tuning (user requirement)
-// Rule: If gov flow > 0 and Ramesh valve is open, but Ramesh flow is ~0 for 5s -> countdown then flag.
-// If gov flow is 0 -> ignore/reset theft detection.
-const float GOV_FLOW_ACTIVE_LPM = 0.25;        // "Gov flow ON" threshold (L/min)
-const float RAMESH_ZERO_LPM     = 0.01;        // Treat <= 0.01 L/min as "no flow"
-const unsigned long THEFT_PERSIST_MS = 5000;   // 5s persistence before flag
+// Theft detection tuning
+const float GOV_FLOW_ACTIVE_LPM = 0.5;        // Supply must be meaningfully ON
+const float RAMESH_ZERO_LPM     = 0.02;       // Flow < 0.02 is "Zero" for theft logic
+const unsigned long THEFT_PERSIST_MS = 5000;   // Exactly 5s timer
 
 static float jsonToFloat(const FirebaseJsonData &d) {
   // FirebaseJsonData sometimes stores numeric values as int/double/string.
