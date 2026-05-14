@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ref, onValue, set, update } from 'firebase/database';
-import { db } from '../firebase';
+import { ref, onValue, set, update, push } from 'firebase/database';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, firestore } from '../firebase';
 import toast from 'react-hot-toast';
 
 const formatVolume = (litres) => {
@@ -25,6 +26,9 @@ const ConsumerDashboard = () => {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [prevLitres, setPrevLitres] = useState(null);
+  const [myRecharges, setMyRecharges] = useState([]);
+  const [myUsageLogs, setMyUsageLogs] = useState([]);
+  const lastSyncedBalanceRef = useRef(0);
   
   const { nodeId } = useParams();
   const navigate = useNavigate();
@@ -71,7 +75,9 @@ const ConsumerDashboard = () => {
         setAccount(acctData);
       } else {
         // Initialize account with default balance if not exists
-        set(ref(db, `accounts/${nodeId}`), { balance: 500, blocked: false, theftFlagged: false });
+        const initial = { balance: 500, blocked: false, theftFlagged: false };
+        set(ref(db, `accounts/${nodeId}`), initial);
+        syncBalanceToFirestore(500);
       }
     });
 
@@ -91,6 +97,57 @@ const ConsumerDashboard = () => {
     };
   }, [nodeId, navigate, user.role, user.nodeId]);
 
+  // Helper to sync balance to Firestore for persistent history/last state
+  const syncBalanceToFirestore = async (newBalance) => {
+    try {
+      await setDoc(doc(firestore, "consumerBalances", nodeId), {
+        nodeId,
+        consumerName: user.name,
+        balance: parseFloat(newBalance.toFixed(2)),
+        lastUpdated: serverTimestamp()
+      }, { merge: true });
+      lastSyncedBalanceRef.current = newBalance;
+    } catch (err) {
+      console.error("Firestore sync error:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (!nodeId) return;
+
+    const rechargeLogsRef = ref(db, 'rechargeLogs');
+    const unsubscribeRecharges = onValue(rechargeLogsRef, (snapshot) => {
+      const logs = snapshot.val();
+      if (logs) {
+        const filtered = Object.entries(logs)
+          .map(([id, val]) => ({ id, ...val }))
+          .filter(l => l.nodeId === nodeId)
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setMyRecharges(filtered);
+      } else {
+        setMyRecharges([]);
+      }
+    });
+
+    const usageLogsRef = ref(db, `usageHistory/${nodeId}`);
+    const unsubscribeUsage = onValue(usageLogsRef, (snapshot) => {
+      const logs = snapshot.val();
+      if (logs) {
+        const logsArray = Object.entries(logs)
+          .map(([id, val]) => ({ id, ...val }))
+          .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setMyUsageLogs(logsArray);
+      } else {
+        setMyUsageLogs([]);
+      }
+    });
+
+    return () => {
+      unsubscribeRecharges();
+      unsubscribeUsage();
+    };
+  }, [nodeId]);
+
   // ===== AUTO DEDUCT BALANCE BASED ON USAGE =====
   useEffect(() => {
     if (!myNodeData || account.balance === undefined) return;
@@ -104,6 +161,20 @@ const ConsumerDashboard = () => {
       
       if (newBalance !== account.balance) {
         set(ref(db, `accounts/${nodeId}/balance`), parseFloat(newBalance.toFixed(2)));
+        
+        // Log usage history
+        push(ref(db, `usageHistory/${nodeId}`), {
+          timestamp: Date.now(),
+          litresUsed: parseFloat(litresUsed.toFixed(3)),
+          cost: parseFloat(cost.toFixed(2)),
+          remainingBalance: parseFloat(newBalance.toFixed(2))
+        });
+
+        // Sync to Firestore periodically or on significant change
+        // Throttled to avoid spamming Firestore on every few millilitres
+        if (Math.abs(newBalance - lastSyncedBalanceRef.current) > 1.0) {
+           syncBalanceToFirestore(newBalance);
+        }
       }
 
       // Auto-block if balance hits zero
@@ -144,7 +215,11 @@ const ConsumerDashboard = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Final balance sync to Firestore on logout
+    if (account.balance !== undefined) {
+      await syncBalanceToFirestore(account.balance);
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/');
@@ -183,12 +258,23 @@ const ConsumerDashboard = () => {
     setTimeout(() => {
       const newBalance = (account.balance || 0) + amount;
       set(ref(db, `accounts/${nodeId}/balance`), parseFloat(newBalance.toFixed(2)));
+      syncBalanceToFirestore(newBalance);
       
       // If was blocked due to zero balance, unblock
       if (account.blocked && !account.theftFlagged) {
         set(ref(db, `accounts/${nodeId}/blocked`), false);
         set(ref(db, `valves/${nodeId}/gov`), true);
       }
+
+      // Add recharge log
+      const logRef = ref(db, 'rechargeLogs');
+      push(logRef, {
+        nodeId,
+        consumerName: user.name,
+        amount,
+        timestamp: Date.now(),
+        status: 'SUCCESS'
+      });
 
       setPaymentProcessing(false);
       setPaymentSuccess(true);
@@ -344,19 +430,50 @@ const ConsumerDashboard = () => {
             ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
             : balance <= 100 
               ? 'linear-gradient(135deg, #f59e0b, #d97706)' 
-              : 'linear-gradient(135deg, var(--primary), var(--accent))'
+              : 'linear-gradient(135deg, var(--primary), var(--accent))',
+          padding: '2rem',
+          borderRadius: 'var(--radius-lg)',
+          color: 'white',
+          marginBottom: '2rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1.5rem'
         }}>
-          <div className="balance-info">
-            <h3>💳 Prepaid Water Balance</h3>
-            <div className="balance-value">₹{balance.toFixed(2)}</div>
-            <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
-              Rate: ₹{ratePerLitre}/litre {user.hasSensor !== false && `| Usage: ${formatVolume(myNodeData?.totalLitres)}`}
-            </p>
-
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div className="balance-info">
+              <h3 style={{ margin: 0, opacity: 0.9, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>💳 Current Balance</h3>
+              <div className="balance-value" style={{ fontSize: '3rem', fontWeight: 800, margin: '0.5rem 0' }}>₹{balance.toFixed(2)}</div>
+              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>
+                Billing Rate: <strong>₹{ratePerLitre}/L</strong>
+              </p>
+            </div>
+            <button className="recharge-btn" onClick={() => setShowRechargeModal(true)} style={{ 
+              background: 'white', 
+              color: balance <= 100 ? 'var(--warning)' : 'var(--primary)',
+              padding: '0.75rem 1.5rem',
+              borderRadius: 'var(--radius-md)',
+              fontWeight: 700,
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}>
+              ⚡ Recharge Now
+            </button>
           </div>
-          <button className="recharge-btn" onClick={() => setShowRechargeModal(true)}>
-            ⚡ Recharge
-          </button>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '1.5rem' }}>
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ margin: 0, fontSize: '0.7rem', opacity: 0.8, textTransform: 'uppercase' }}>Today's Usage</p>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.25rem', fontWeight: 700 }}>{formatVolume(myNodeData?.totalLitres || 0)}</p>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-md)' }}>
+              <p style={{ margin: 0, fontSize: '0.7rem', opacity: 0.8, textTransform: 'uppercase' }}>Monthly Usage (Est.)</p>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '1.25rem', fontWeight: 700 }}>{formatVolume((myNodeData?.totalLitres || 0) * 30.5)}</p>
+            </div>
+          </div>
         </div>
 
         {/* Offline Alert Banner */}
@@ -405,6 +522,17 @@ const ConsumerDashboard = () => {
           </div>
         )}
 
+
+        {/* Low Balance Alert */}
+        {balance > 0 && balance <= 100 && (
+          <div className="theft-banner suspicious animate-pulse" style={{ marginBottom: '2rem', border: '2px solid var(--warning)' }}>
+            <div className="theft-banner-icon">⚠️</div>
+            <div className="theft-banner-content">
+              <h3 style={{ color: '#d97706' }}>LOW BALANCE ALERT</h3>
+              <p>Your balance is low (₹{balance.toFixed(2)}). Please recharge soon to avoid water supply interruption.</p>
+            </div>
+          </div>
+        )}
 
         {/* Zero Balance Alert */}
         {balance <= 0 && !account.theftFlagged && !emergencyActive && (
@@ -556,6 +684,73 @@ const ConsumerDashboard = () => {
             </div>
           )}
         </section>
+
+        {/* Usage & Recharge History Section */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '2.5rem' }}>
+          {/* Usage History */}
+          <div className="card">
+            <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              📊 Usage History
+            </h3>
+            <div className="gov-table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              <table className="gov-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Date/Time</th>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Usage</th>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Deducted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myUsageLogs.length === 0 ? (
+                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No usage recorded yet.</td></tr>
+                  ) : (
+                    myUsageLogs.slice(0, 50).map(log => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                        <td style={{ padding: '0.75rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', fontWeight: 600 }}>{formatVolume(log.litresUsed)}</td>
+                        <td style={{ padding: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>-₹{log.cost.toFixed(2)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Recharge Logs */}
+          <div className="card">
+            <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              📜 Recharge History
+            </h3>
+            <div className="gov-table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              <table className="gov-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Date/Time</th>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Amount</th>
+                    <th style={{ padding: '0.75rem', fontSize: '0.75rem' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myRecharges.length === 0 ? (
+                    <tr><td colSpan="3" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No recharges yet.</td></tr>
+                  ) : (
+                    myRecharges.map(log => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                        <td style={{ padding: '0.75rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', color: 'var(--success)', fontWeight: 700 }}>+₹{log.amount.toFixed(2)}</td>
+                        <td style={{ padding: '0.75rem' }}>
+                          <span className="status" style={{ fontSize: '0.6rem' }}>{log.status}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
 
         {/* ===== RAZORPAY RECHARGE MODAL ===== */}
