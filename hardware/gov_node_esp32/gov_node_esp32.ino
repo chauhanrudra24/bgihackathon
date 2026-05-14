@@ -189,11 +189,11 @@ void loop() {
     theftCheckMillis = millis();
 
     // PERSISTENT FETCH: Retain last known values if network fails
-    float rameshFlow = 0, rameshTotal = 0, priyaTotal = 0;
-    bool rTamper = false, rAccountFlagged = false;
-    bool rValveUser = true, rValveGov = true;
-    bool pValveUser = true, pValveGov = true;
-    unsigned long rameshLastSeen = 0;
+    static float rameshFlow = 0, rameshTotal = 0, priyaTotal = 0;
+    static bool rTamper = false, rAccountFlagged = false;
+    static bool rValveUser = true, rValveGov = true;
+    static bool pValveUser = true, pValveGov = true;
+    static unsigned long rameshLastSeen = 0;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
@@ -277,9 +277,9 @@ void loop() {
     // node)
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
-    // SIMPLE THEFT LOGIC:
-    // If Gov Node is detecting flow (>0.1 L/min)
-    // AND Ramesh meter is exactly 0 (or <0.01 noise floor)
+    // SIMPLE THEFT LOGIC: 
+    // If Gov Node is detecting flow (>0.1 L/min) 
+    // AND Ramesh meter is COMPLTLY 0 (or <0.01 noise floor) 
     // for 5 seconds -> Flag as Theft.
     bool potentialTheft = (flowRate > 0.1 && rameshFlow < 0.01);
 
@@ -287,11 +287,11 @@ void loop() {
       if (theftAlertStartTime == 0) {
         theftAlertStartTime = millis();
         theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > 5000) {
+        Serial.println(F("THEFT SUSPECTED: Starting 5s verification timer."));
+      } else if (millis() - theftAlertStartTime > 5000) { 
         if (theftStatus != "THEFT FLAGGED") {
           theftStatus = "THEFT FLAGGED";
-          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent "
-                          "5s). Bypass suspected.";
+          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s). Bypass suspected.";
           logAlert("Ramesh", "THEFT", reason.c_str());
 
           FirebaseJson updates;
@@ -302,13 +302,16 @@ void loop() {
         }
       }
     } else {
-      // RESET COUNTDOWN INSTANTLY if flow resumes
+      // RESET ALL if flow returns or gov stops
       if (theftAlertStartTime > 0) {
-        Serial.println(F("Theft countdown ABORTED: Consumer flow detected."));
+        Serial.printf("Theft verification ABORTED. Gov:%.2f, Ramesh:%.2f\n", flowRate, rameshFlow);
       }
       theftAlertStartTime = 0;
-      if (theftStatus == "PENDING_ALERT")
+      // If it was pending, reset to Normal. 
+      // If it was already flagged, it stays flagged until Admin clears rAccountFlagged.
+      if (theftStatus == "PENDING_ALERT") {
         theftStatus = "NORMAL";
+      }
     }
 
     // Batch Update Status (Telemetery)
