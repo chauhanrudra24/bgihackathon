@@ -241,8 +241,38 @@ void loop() {
     // 3. OR Ramesh's valve is open but rameshFlow is ~0 (Bypass at Ramesh's node)
     // 4. AND Priya's valve is closed (To ensure flow isn't just going to Priya)
 
-    // Batch Update Status (Telemetry Only)
+    // SIMPLE THEFT LOGIC: 
+    // If Gov Node is detecting flow (>0.1 L/min) 
+    // AND Ramesh meter is exactly 0 (or <0.01 noise floor) 
+    // for 5 seconds -> Flag as Theft.
+    bool potentialTheft = (flowRate > 0.1 && rameshFlow < 0.01);
+
+    if (potentialTheft) {
+      if (theftAlertStartTime == 0) {
+        theftAlertStartTime = millis();
+        theftStatus = "PENDING_ALERT";
+      } else if (millis() - theftAlertStartTime > 5000) { 
+        if (theftStatus != "THEFT FLAGGED") {
+          theftStatus = "THEFT FLAGGED";
+          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent 5s). Bypass suspected.";
+          
+          logAlert("Ramesh", "THEFT", reason);
+
+          FirebaseJson updates;
+          updates.set("valves/consumer_node/gov", false);
+          updates.set("accounts/consumer_node/theftFlagged", true);
+          updates.set("accounts/consumer_node/theftReason", reason);
+          Firebase.RTDB.updateNode(&fbdo, "/", &updates);
+        }
+      }
+    } else {
+      theftAlertStartTime = 0;
+      if (theftStatus != "THEFT FLAGGED") theftStatus = "NORMAL";
+    }
+
+    // Batch Update Status
     FirebaseJson statusUpdates;
+    statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
     statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
     statusUpdates.set("sensorData/gov_node/consumerTotalLitres", consumerTotalLitres);
     statusUpdates.set("sensorData/gov_node/flowDifference", flowDifference);
