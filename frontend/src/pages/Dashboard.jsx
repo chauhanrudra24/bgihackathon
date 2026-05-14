@@ -1521,10 +1521,9 @@ const Dashboard = () => {
           
           {/* Theft Alert Banner */}
           <TheftAlertBanner 
-            theftStatus={theftStatus}
-            govSupply={govNode.govSupplyLitres}
-            consumerTotal={govNode.consumerTotalLitres}
-            difference={govNode.flowDifference}
+            theftDetected={Object.values(accounts || {}).some(a => a.theftFlagged)}
+            govFlow={data?.gov_node?.flowRate || 0}
+            consumerFlow={data?.consumer_node?.flowRate || 0}
             accounts={accounts}
           />
 
