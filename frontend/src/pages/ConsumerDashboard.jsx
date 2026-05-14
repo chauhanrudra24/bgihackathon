@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ref, onValue, set, update } from 'firebase/database';
+import { ref, onValue, set, update, push } from 'firebase/database';
 import { db } from '../firebase';
 import toast from 'react-hot-toast';
 
@@ -189,6 +189,16 @@ const ConsumerDashboard = () => {
         set(ref(db, `accounts/${nodeId}/blocked`), false);
         set(ref(db, `valves/${nodeId}/gov`), true);
       }
+
+      // Add recharge log
+      const logRef = ref(db, 'rechargeLogs');
+      push(logRef, {
+        nodeId,
+        consumerName: user.name,
+        amount,
+        timestamp: Date.now(),
+        status: 'SUCCESS'
+      });
 
       setPaymentProcessing(false);
       setPaymentSuccess(true);

@@ -648,6 +648,7 @@ const Dashboard = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [activeTab, setActiveTab] = useState('dashboard');
   const [flowHistory, setFlowHistory] = useState([]);
+  const [rechargeLogs, setRechargeLogs] = useState([]);
   
   // Popup state
   const [popup, setPopup] = useState({ 
@@ -782,12 +783,25 @@ const Dashboard = () => {
       }
     });
 
+    const rechargeLogsRef = ref(db, 'rechargeLogs');
+    const unsubscribeRechargeLogs = onValue(rechargeLogsRef, (snapshot) => {
+      const logs = snapshot.val();
+      if (logs) {
+        const logsArray = Object.entries(logs).map(([id, val]) => ({ id, ...val }));
+        logsArray.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        setRechargeLogs(logsArray);
+      } else {
+        setRechargeLogs([]);
+      }
+    });
+
     return () => {
       unsubscribeSensors();
       unsubscribeValves();
       unsubscribeAccounts();
       unsubscribeCommands();
       unsubscribeAlertLogs();
+      unsubscribeRechargeLogs();
     };
   }, [navigate]);
 
@@ -1571,7 +1585,116 @@ const Dashboard = () => {
         </div>
       </div>
     );
+  };  // ==========================
+  // BILLING & WALLET
+  // ==========================
+  const renderBilling = () => {
+    const lowBalanceUsers = CONSUMER_NODES.filter(({ nodeId }) => (accounts[nodeId]?.balance || 0) < 100);
+    const totalWalletBalance = CONSUMER_NODES.reduce((sum, { nodeId }) => sum + (accounts[nodeId]?.balance || 0), 0);
+
+    return (
+      <div className="main-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div>
+            <h2>💳 Billing & Wallet Management</h2>
+            <p style={{ color: 'var(--text-secondary)' }}>Real-time wallet monitoring, recharge history, and payment logs.</p>
+          </div>
+          <div className="card stat-card" style={{ padding: '0.75rem 1.5rem', borderLeft: '4px solid var(--primary)', margin: 0 }}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>TOTAL NETWORK BALANCE</p>
+            <h3 style={{ margin: 0 }}>₹{totalWalletBalance.toFixed(2)}</h3>
+          </div>
+        </div>
+
+        <div className="analytics-summary-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
+          {/* Low Balance Users */}
+          <div className="card">
+            <h3 style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between' }}>
+              <span>⚠️ Low Balance Users</span>
+              <span className="status warning">{lowBalanceUsers.length}</span>
+            </h3>
+            {lowBalanceUsers.length === 0 ? (
+              <p style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No users with low balance.</p>
+            ) : (
+              <div className="theft-list-container" style={{ background: 'var(--bg-color)', padding: '0.75rem', borderRadius: 'var(--radius-md)' }}>
+                {lowBalanceUsers.map(({ nodeId, name }) => (
+                  <div key={nodeId} className="theft-item" style={{ background: 'white', marginBottom: '0.5rem', borderLeft: '4px solid var(--warning)' }}>
+                    <div className="theft-item-info">
+                      <h4>{name}</h4>
+                      <p style={{ fontSize: '0.8rem' }}>Node: <code>{nodeId}</code></p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--danger)' }}>₹{(accounts[nodeId]?.balance || 0).toFixed(2)}</div>
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{accounts[nodeId]?.balance <= 0 ? 'SUSPENDED' : 'LOW FUNDS'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Stats */}
+          <div className="card">
+            <h3 style={{ marginBottom: '1rem' }}>📈 Financial Overview</h3>
+            <div className="analytics-details">
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Active Subscriptions</span>
+                <span style={{ fontWeight: 600 }}>{CONSUMER_NODES.length}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Average Wallet</span>
+                <span style={{ fontWeight: 600 }}>₹{(totalWalletBalance / (CONSUMER_NODES.length || 1)).toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Recent Recharges (24h)</span>
+                <span style={{ fontWeight: 600 }}>{rechargeLogs.length}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>System Revenue</span>
+                <span style={{ fontWeight: 600, color: 'var(--success)' }}>₹{rechargeLogs.reduce((s, l) => s + (l.amount || 0), 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Recharge Logs */}
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <h3>📜 Recent Recharge Transactions</h3>
+            <button className="reset-btn" onClick={() => set(ref(db, 'rechargeLogs'), null)} style={{ fontSize: '0.7rem' }}>Clear Logs</button>
+          </div>
+          <div className="gov-table-container">
+            <table className="gov-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Consumer</th>
+                  <th>Node ID</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rechargeLogs.length === 0 ? (
+                  <tr><td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No recent transactions.</td></tr>
+                ) : (
+                  rechargeLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td style={{ fontSize: '0.85rem' }}>{new Date(log.timestamp).toLocaleString()}</td>
+                      <td style={{ fontWeight: 600 }}>{log.consumerName}</td>
+                      <td><code>{log.nodeId}</code></td>
+                      <td style={{ fontWeight: 700, color: 'var(--success)' }}>+₹{log.amount}</td>
+                      <td><span className="status">SUCCESS</span></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
   };
+
 
   // ==========================
   // CONSUMERS REGISTRY
@@ -1675,6 +1798,7 @@ const Dashboard = () => {
           </div>
           <div className={`nav-item ${activeTab === 'violations' ? 'active' : ''}`} onClick={() => setActiveTab('violations')}>🚫 Violations</div>
           <div className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>📈 Analytics</div>
+          <div className={`nav-item ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>💳 Billing</div>
           <div className={`nav-item ${activeTab === 'consumers' ? 'active' : ''}`} onClick={() => setActiveTab('consumers')}>👥 Consumers</div>
           <div className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>⚙️ Settings</div>
         </nav>
@@ -1748,6 +1872,7 @@ const Dashboard = () => {
           {activeTab === 'alerts' && renderAlertLogs()}
           {activeTab === 'violations' && renderViolations()}
           {activeTab === 'analytics' && renderAnalytics()}
+          {activeTab === 'billing' && renderBilling()}
           {activeTab === 'consumers' && renderConsumers()}
           {activeTab === 'settings' && <SettingsView />}
         </div>
