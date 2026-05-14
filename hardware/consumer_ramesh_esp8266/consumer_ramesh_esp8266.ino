@@ -49,7 +49,14 @@ float emergencyValue   = 0.0;   // Remaining quota in litres
 float emergencyQuotaLitres = 0.050; // Default: 50ml. Updated from Firebase settings.
 unsigned long lastFlowCalc = 0;
 unsigned long lastValveActionTime = 0;
-float flowCalibration  = 98.0; 
+float flowCalibration  = 98.0;
+
+// ========================= THEFT CANDIDATE =========================
+// If consumer flow remains exactly 0 for 5 continuous seconds,
+// theftCandidate = true. ANY non-zero flow instantly resets to false.
+// The dashboard combines this with gov flow > 0 to determine theft.
+bool theftCandidate = false;
+unsigned long zeroFlowStartTime = 0;
 
 // Flag to prevent sosActive=false in Firebase from overriding a physical-button SOS.
 // Set true when emergency is toggled locally; cleared when Firebase sosActive syncs to true.
@@ -267,6 +274,7 @@ void loop() {
         totalLitres = 0; flowRate = 0; pulseCount = 0;
         tamperDetected = false; emergencyActive = false;
         emergencyLitres = 0;
+        theftCandidate = false; zeroFlowStartTime = 0;
         Firebase.RTDB.setBool(&fbdo, F("commands/consumer_node/reset"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/tamperDetected"), false);
         Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), false);
@@ -346,6 +354,26 @@ void loop() {
           Serial.printf("SOS QUOTA EXHAUSTED: Used %.0f ml of %.0f ml\n", emergencyLitres * 1000, emergencyQuotaLitres * 1000);
           setEmergency(false, "QUOTA_EXHAUSTED");
         }
+      }
+    }
+
+    // ---- THEFT CANDIDATE: 5-second zero-flow detection ----
+    // Any non-zero flow (even 0.01 L/min) INSTANTLY clears the timer.
+    // Only after 5 continuous seconds of absolute zero flow: theftCandidate = true.
+    if (flowRate > 0) {
+      // Flow detected — immediately clear
+      if (theftCandidate || zeroFlowStartTime > 0) {
+        Serial.println(F("Theft candidate CLEARED: Consumer flow detected."));
+      }
+      theftCandidate = false;
+      zeroFlowStartTime = 0;
+    } else {
+      // flowRate == 0: start or continue the 5s timer
+      if (zeroFlowStartTime == 0) {
+        zeroFlowStartTime = millis();
+      } else if (!theftCandidate && (millis() - zeroFlowStartTime >= 5000)) {
+        theftCandidate = true;
+        Serial.println(F("Theft candidate SET: Consumer flow == 0 for 5s."));
       }
     }
 
@@ -434,6 +462,7 @@ void loop() {
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/consumer_node/emergencyLitres"), emergencyLitres);
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/tamperDetected"), tamperDetected);
     Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/emergencyActive"), emergencyActive);
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/consumer_node/theftCandidate"), theftCandidate);
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/consumer_node/lastSeen"));
   }
 

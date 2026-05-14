@@ -14,7 +14,7 @@ FirebaseConfig config;
 // ========================= TIMING =========================
 unsigned long sendDataPrevMillis = 0;
 unsigned long sendFlowPrevMillis = 0;
-unsigned long theftCheckMillis = 0;
+unsigned long telemetryMillis = 0;
 unsigned long lastCmdCheck = 0;
 
 // ========================= SENSORS =========================
@@ -35,23 +35,13 @@ float govSupplyLitres = 0.0; // Total litres passed through main supply
 unsigned long lastFlowCalc = 0;
 float flowCalibration = 98.0; // F = 98 for 6mm ID pipe (1L = 5880 pulses)
 
-// ========================= THEFT LOGIC =========================
-String theftStatus = "NORMAL";
-unsigned long theftAlertStartTime = 0;
-bool theftFlaggedGlobal = false;
-
-// Theft detection tuning
-const float GOV_FLOW_ACTIVE_LPM = 0.5;
-const float RAMESH_ZERO_LPM = 0.01; // Even 0.01 L/min is "Flowing" (Don't mark)
-const unsigned long THEFT_PERSIST_MS = 5000;
-
-// Valve-change grace period: suppress theft detection for 15s after any valve toggle
-unsigned long lastValveChangeTime = 0;
-bool prevRameshValveGov = true;
+// NOTE: Theft detection has been REMOVED from the gov node entirely.
+// The consumer ESP now sends a `theftCandidate` flag (true when consumer
+// flow == 0 for 5 continuous seconds). The Dashboard combines gov flow > 0
+// AND theftCandidate == true to determine theft. This eliminates all
+// false-positive theft detections caused by timing mismatches between nodes.
 
 static float jsonToFloat(FirebaseJsonData &d) {
-  // FirebaseJsonData::to<T>() is not a const member, so we take a non-const
-  // reference.
   if (!d.success)
     return 0.0f;
   if (d.typeNum == FirebaseJson::JSON_STRING) {
@@ -63,7 +53,6 @@ static float jsonToFloat(FirebaseJsonData &d) {
 void IRAM_ATTR flowPulseISR() {
   static unsigned long lastPulse = 0;
   unsigned long now = micros();
-  // RESTORED sensitivity: 500us debounce
   if (now - lastPulse > 500) {
     pulseCount++;
     lastPulse = now;
@@ -86,7 +75,7 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false); // Disable power save for stability
+  WiFi.setSleep(false);
   WiFiManager wm;
   wm.setAPCallback([](WiFiManager *wm) { blinker.attach(0.2, blink); });
 
@@ -111,13 +100,12 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  fbdo.setResponseSize(2048); // Increased for ESP32 stability
+  fbdo.setResponseSize(2048);
   fbdo.setBSSLBufferSize(2048, 1024);
 
   // ---- Data Recovery ----
   if (Firebase.ready()) {
-    if (Firebase.RTDB.getFloat(&fbdo,
-                               F("sensorData/gov_node/govSupplyLitres"))) {
+    if (Firebase.RTDB.getFloat(&fbdo, F("sensorData/gov_node/govSupplyLitres"))) {
       govSupplyLitres = fbdo.floatData();
       Serial.printf("Recovered System Supply: %.2f L\n", govSupplyLitres);
     }
@@ -152,16 +140,13 @@ void loop() {
         govSupplyLitres = 0;
         flowRate = 0;
         pulseCount = 0;
-        theftStatus = "NORMAL";
-        theftAlertStartTime = 0;
         Firebase.RTDB.setBool(&fbdo, F("commands/resetAll"), false);
-        Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"),
-                                "NORMAL");
+        Serial.println(F("System reset received."));
       }
     }
   }
 
-  // ---- 2. FLOW CALCULATION ----
+  // ---- 2. FLOW CALCULATION (every 1s) ----
   if (millis() - lastFlowCalc >= 1000) {
     unsigned long elapsed = millis() - lastFlowCalc;
     noInterrupts();
@@ -173,7 +158,6 @@ void loop() {
     if (sec > 0) {
       float hz = pc / sec;
       float raw = hz / flowCalibration;
-      // Sticky Filter: Slower decay to prevent flickering to 0
       if (pc > 0) {
         flowRate = flowRate * 0.5 + raw * 0.5;
       } else {
@@ -188,83 +172,27 @@ void loop() {
     lastFlowCalc = millis();
   }
 
-  // ---- 3. ADVANCED THEFT DETECTION (every 5s) ----
-  if (Firebase.ready() && (millis() - theftCheckMillis > 5000)) {
-    theftCheckMillis = millis();
+  // ---- 3. TELEMETRY AGGREGATION (every 5s) ----
+  // Gov node collects consumer totals for dashboard display only.
+  // NO theft detection here — that's handled by consumer ESP + dashboard.
+  if (Firebase.ready() && (millis() - telemetryMillis > 5000)) {
+    telemetryMillis = millis();
 
-    // PERSISTENT FETCH: Retain last known values if network fails
-    float rameshFlow = 0, rameshTotal = 0, priyaTotal = 0;
-    bool rTamper = false, rAccountFlagged = false;
-    bool rValveUser = true, rValveGov = true;
-    bool pValveUser = true, pValveGov = true;
-    unsigned long rameshLastSeen = 0;
+    float rameshTotal = 0, priyaTotal = 0;
+    bool rTamper = false;
 
     if (Firebase.RTDB.getJSON(&fbdo, F("sensorData"))) {
       FirebaseJson &res = fbdo.jsonObject();
       FirebaseJsonData d;
-      if (res.get(d, F("consumer_node/flowRate")))
-        rameshFlow = jsonToFloat(d);
       if (res.get(d, F("consumer_node/totalLitres")))
         rameshTotal = jsonToFloat(d);
       if (res.get(d, F("consumer_node/tamperDetected")))
         rTamper = d.boolValue;
-      if (res.get(d, F("consumer_node/lastSeen")))
-        rameshLastSeen = (unsigned long)jsonToFloat(d);
       if (res.get(d, F("consumer_node_8266/totalLitres")))
         priyaTotal = jsonToFloat(d);
     }
 
-    // NEW: Check if Admin has cleared the flag in Accounts
-    if (Firebase.RTDB.getJSON(&fbdo, F("accounts/consumer_node"))) {
-      FirebaseJson &res = fbdo.jsonObject();
-      FirebaseJsonData d;
-      if (res.get(d, F("theftFlagged")))
-        rAccountFlagged = d.boolValue;
-    }
-
-    // Sync local status with cloud flag: If DB says not flagged, we reset local
-    // status
-    if (!rAccountFlagged && theftStatus == "THEFT FLAGGED") {
-      theftStatus = "NORMAL";
-      theftAlertStartTime = 0;
-    }
-
-    if (Firebase.RTDB.getJSON(&fbdo, F("valves"))) {
-      FirebaseJson &res = fbdo.jsonObject();
-      FirebaseJsonData d;
-      if (res.get(d, F("consumer_node/user")))
-        rValveUser = d.boolValue;
-      if (res.get(d, F("consumer_node/gov")))
-        rValveGov = d.boolValue;
-      if (res.get(d, F("consumer_node_8266/user")))
-        pValveUser = d.boolValue;
-      if (res.get(d, F("consumer_node_8266/gov")))
-        pValveGov = d.boolValue;
-    }
-
-    // Track valve state changes to suppress false theft detection
-    if (rValveGov != prevRameshValveGov) {
-      lastValveChangeTime = millis();
-      prevRameshValveGov = rValveGov;
-      Serial.printf("Valve state changed -> grace period started (15s)\n");
-    }
-
-    bool rameshOpen = (rValveUser && rValveGov);
-    bool priyaOpen = (pValveUser && pValveGov);
-
-    // Consider Ramesh offline if no heartbeat in 60s (avoid false theft when
-    // node is down)
-    bool rameshOnline = false;
-    if (rameshLastSeen > 0) {
-      rameshOnline = true;
-    }
-
-    // Aggregate Data
-    float consumerTotalLitres = rameshTotal + priyaTotal;
-    float flowDifference = govSupplyLitres - consumerTotalLitres;
-    if (flowDifference < 0)
-      flowDifference = 0; // Calibration drift protection
-
+    // Tamper relay (still handled server-side for reliability)
     static bool lastRTamper = false;
     if (rTamper && !lastRTamper) {
       logAlert("Ramesh", "TAMPER",
@@ -275,73 +203,31 @@ void loop() {
     }
     lastRTamper = rTamper;
 
-    // THEFT DETECTION — only runs when:
-    // 1. Grace period after valve change has expired (15 seconds)
-    // 2. Ramesh's valve is OPEN (both gov + user)
-    // 3. Gov flow is active (>0.1 L/min)
-    // 4. Ramesh flow is essentially zero (<0.01) for 5 consecutive seconds
-    // This prevents false theft when valve was just opened and Ramesh
-    // hasn't reported flow yet (2s reporting delay + network latency).
+    // Aggregate Data for dashboard display
+    float consumerTotalLitres = rameshTotal + priyaTotal;
+    float flowDifference = govSupplyLitres - consumerTotalLitres;
+    if (flowDifference < 0)
+      flowDifference = 0;
 
-    bool inGracePeriod = (millis() - lastValveChangeTime) < 15000;
-    bool potentialTheft = false;
-
-    if (!inGracePeriod && rameshOpen && flowRate > 0.1 && rameshFlow < 0.01) {
-      potentialTheft = true;
-    }
-
-    if (potentialTheft) {
-      if (theftAlertStartTime == 0) {
-        theftAlertStartTime = millis();
-        theftStatus = "PENDING_ALERT";
-      } else if (millis() - theftAlertStartTime > THEFT_PERSIST_MS) {
-        if (theftStatus != "THEFT FLAGGED") {
-          theftStatus = "THEFT FLAGGED";
-          String reason = "Gov flow detected but Ramesh flow is 0 (Persistent "
-                          "5s). Bypass suspected.";
-          logAlert("Ramesh", "THEFT", reason.c_str());
-
-          FirebaseJson updates;
-          updates.set("valves/consumer_node/gov", false);
-          updates.set("accounts/consumer_node/theftFlagged", true);
-          updates.set("accounts/consumer_node/theftReason", reason);
-          Firebase.RTDB.updateNode(&fbdo, "/", &updates);
-        }
-      }
-    } else {
-      // RESET COUNTDOWN INSTANTLY if flow resumes or conditions not met
-      if (theftAlertStartTime > 0) {
-        Serial.println(F("Theft countdown ABORTED: Conditions cleared."));
-      }
-      theftAlertStartTime = 0;
-      if (theftStatus == "PENDING_ALERT")
-        theftStatus = "NORMAL";
-    }
-
-    // Batch Update Status (Telemetery)
+    // Batch Update (telemetry only — no theft status)
     FirebaseJson statusUpdates;
-    statusUpdates.set("sensorData/gov_node/theftStatus", theftStatus);
     statusUpdates.set("sensorData/gov_node/govSupplyLitres", govSupplyLitres);
-    statusUpdates.set("sensorData/gov_node/consumerTotalLitres",
-                      consumerTotalLitres);
+    statusUpdates.set("sensorData/gov_node/consumerTotalLitres", consumerTotalLitres);
     statusUpdates.set("sensorData/gov_node/flowDifference", flowDifference);
     Firebase.RTDB.updateNode(&fbdo, "/", &statusUpdates);
   }
 
-  // ---- 4. DATA SYNC (Increased Frequency for responsiveness) ----
+  // ---- 4. DATA SYNC (every 1s) ----
   if (Firebase.ready() && (millis() - sendFlowPrevMillis > 1000)) {
     sendFlowPrevMillis = millis();
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), flowRate);
     Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
-    Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/theftStatus"),
-                            theftStatus);
   }
 
   // ---- 5. WATER QUALITY (every 10s) ----
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 10000)) {
     sendDataPrevMillis = millis();
 
-    // Faster averaging to avoid loop delays
     long tSum = 0;
     for (int i = 0; i < 10; i++) {
       tSum += analogRead(TURBIDITY_PIN);
@@ -359,13 +245,10 @@ void loop() {
                  857.39 * dVolts) *
                 0.5;
 
-    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"),
-                           tVolts);
+    Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/turbidityVoltage"), tVolts);
     Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/tdsValue"), tds);
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"),
-                          (tds > 1.0));
-    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"),
-                          (tVolts > 0.1));
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/tdsConnected"), (tds > 1.0));
+    Firebase.RTDB.setBool(&fbdo, F("sensorData/gov_node/turbidityConnected"), (tVolts > 0.1));
     Firebase.RTDB.setString(&fbdo, F("sensorData/gov_node/waterStatus"),
                             (tVolts > 3.0) ? "CLEAR" : "DIRTY");
 

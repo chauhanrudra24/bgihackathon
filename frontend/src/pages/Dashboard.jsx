@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue, set, remove, update } from 'firebase/database';
+import { ref, onValue, set, remove, update, push } from 'firebase/database';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firestore } from '../firebase';
 import toast from 'react-hot-toast';
@@ -31,51 +31,29 @@ const formatVolume = (litres) => {
 // =========================
 // THEFT ALERT BANNER
 // =========================
-const TheftAlertBanner = ({ theftStatus, govSupply, consumerTotal, difference, accounts }) => {
-  const [countdown, setCountdown] = useState(5);
+// Dashboard-computed theft: govFlow > 0 AND consumer theftCandidate == true
+const TheftAlertBanner = ({ theftDetected, govFlow, consumerFlow, accounts }) => {
+  if (!theftDetected) return null;
 
-  useEffect(() => {
-    let timer;
-    if (theftStatus?.startsWith('PENDING_')) {
-      setCountdown(5);
-      timer = setInterval(() => {
-        setCountdown(prev => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [theftStatus]);
-
-  if (theftStatus === 'NORMAL' || !theftStatus) return null;
-
-  const isAlert = theftStatus === 'ALERT' || theftStatus === 'THEFT FLAGGED';
-  const isPending = theftStatus?.startsWith('PENDING_');
-  
   // Find who is flagged
   const flaggedNodes = Object.entries(accounts || {})
     .filter(([_, acct]) => acct.theftFlagged)
-    .map(([id]) => id === 'consumer_node' ? 'Ramesh' : 'Priya');
-  const nodeMsg = flaggedNodes.length > 0 ? ` (Suspect: ${flaggedNodes.join(', ')})` : '';
+    .map(([id]) => id === 'consumer_node' ? 'Ramesh Kumar (Umaria, near BGI)' : 'Priya Patel');
   
   return (
-    <div className={`theft-banner ${isAlert ? 'alert' : 'suspicious'}`} id="theft-alert-banner">
-      <div className="theft-banner-icon">{isAlert ? '🚨' : isPending ? '⏳' : '⚠️'}</div>
+    <div className={`theft-banner alert`} id="theft-alert-banner">
+      <div className="theft-banner-icon">🚨</div>
       <div className="theft-banner-content">
         <h3>
-          {isAlert ? `THEFT ALERT: Major Water Loss Detected!${nodeMsg}` : 
-           isPending ? `POTENTIAL THEFT DETECTED: Verifying in ${countdown}s...` :
-           'SUSPICIOUS: Minor Flow Discrepancy'}
+          {flaggedNodes.length > 0 
+            ? `⚠ ${flaggedNodes.join(', ')}` 
+            : 'THEFT DETECTED: Consumer flow is zero while main supply is active'}
         </h3>
         <p>
-          Gov Supply: <strong>{govSupply?.toFixed(2) || 0} L</strong> |
-          Consumer Total: <strong>{consumerTotal?.toFixed(2) || 0} L</strong> |
-          Unaccounted: <strong>{difference?.toFixed(2) || 0} L</strong>
+          Main supply active but no consumer flow detected. 
+          Gov Flow: <strong>{govFlow?.toFixed(2) || 0} L/min</strong> | 
+          Consumer Flow: <strong>{consumerFlow?.toFixed(2) || 0} L/min</strong>
         </p>
-        {isPending && (
-          <div className="theft-countdown-box" style={{ background: 'rgba(0,0,0,0.2)', padding: '0.5rem 1rem', borderRadius: 'var(--radius-sm)', marginLeft: '1rem', border: '1px solid rgba(255,255,255,0.3)' }}>
-             <div className="countdown-timer" style={{ fontSize: '1.2rem', fontWeight: 800 }}>{countdown}s</div>
-             <div className="countdown-label" style={{ fontSize: '0.6rem', textTransform: 'uppercase', opacity: 0.8 }}>Verifying...</div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -897,6 +875,7 @@ const Dashboard = () => {
       updates['sensorData/gov_node/consumerTotalLitres'] = 0;
       updates['sensorData/gov_node/flowDifference'] = 0;
       updates['sensorData/gov_node/theftStatus'] = 'NORMAL';
+      updates['sensorData/consumer_node/theftCandidate'] = false;
       
       updates['sensorData/consumer_node/totalLitres'] = 0;
       updates['sensorData/consumer_node/flowRate'] = 0;
@@ -998,11 +977,40 @@ const Dashboard = () => {
     }
   };
 
-  const { govNode, theftStatus } = useMemo(() => {
+  // Compute theft status from consumer theftCandidate + gov flow
+  // NO minimum threshold. Any gov flow > 0 combined with consumer theftCandidate = THEFT.
+  const { govNode, theftDetected } = useMemo(() => {
     const node = data?.gov_node || {};
-    const status = node.theftStatus || 'NORMAL';
-    return { govNode: node, theftStatus: status };
+    const govFlow = node.flowRate || 0;
+    const consumerTheftCandidate = data?.consumer_node?.theftCandidate || false;
+    // Theft = gov flow exists AND consumer has had zero flow for 5+ seconds
+    const detected = govFlow > 0 && consumerTheftCandidate;
+    return { govNode: node, theftDetected: detected };
   }, [data]);
+
+  // Auto-flag theft in Firebase when dashboard detects theft condition
+  useEffect(() => {
+    if (!theftDetected) return;
+    const acct = accounts?.consumer_node || {};
+    if (acct.theftFlagged) return; // Already flagged, don't spam
+
+    const reason = 'Main supply active but no consumer flow detected';
+    const updates = {};
+    updates['accounts/consumer_node/theftFlagged'] = true;
+    updates['accounts/consumer_node/theftReason'] = reason;
+    updates['valves/consumer_node/gov'] = false; // Block valve
+    update(ref(db), updates).then(() => {
+      console.log('Theft auto-flagged by dashboard');
+      // Push alert log
+      const alertRef = ref(db, 'alertLogs');
+      push(alertRef, {
+        node: 'Ramesh',
+        type: 'THEFT',
+        msg: reason,
+        timestamp: Date.now()
+      });
+    }).catch(err => console.error('Theft flag failed:', err));
+  }, [theftDetected, accounts]);
 
   if (errorMsg) return <div className="dashboard"><h2>{errorMsg}</h2><button onClick={handleLogout} className="logout-btn">Logout</button></div>;
   if (!data) return <div className="dashboard"><h2>Connecting to Jal Board Network...</h2></div>;
@@ -1020,6 +1028,14 @@ const Dashboard = () => {
         NOTE: we keep Gov node "ONLINE" sticky for a short grace window so it
         doesn't flash OFFLINE due to sporadic `lastSeen` update delays.
       */}
+      {/* Theft Alert Banner — shows when govFlow > 0 AND consumer theftCandidate */}
+      <TheftAlertBanner 
+        theftDetected={theftDetected}
+        govFlow={govNode.flowRate}
+        consumerFlow={data?.consumer_node?.flowRate}
+        accounts={accounts}
+      />
+
       <NodeCard 
         title="🏛️ Rau Pumping Station (BGI Indore Area)" 
         nodeData={govNode} 
@@ -1042,11 +1058,11 @@ const Dashboard = () => {
             <div className="status">BY HOMES</div>
           </div>
 
-          <div className={`card stat-card ${theftStatus === 'ALERT' ? 'loss-alert' : theftStatus === 'SUSPICIOUS' ? 'loss-warn' : 'loss-ok'}`}>
+          <div className={`card stat-card ${theftDetected ? 'loss-alert' : 'loss-ok'}`}>
             <h3>Unaccounted</h3>
             <div className="value">{formatVolume(govNode.flowDifference)}</div>
-            <div className={`status ${theftStatus === 'ALERT' ? 'dirty' : theftStatus === 'SUSPICIOUS' ? 'warning' : ''}`}>
-              {theftStatus}
+            <div className={`status ${theftDetected ? 'dirty' : ''}`}>
+              {theftDetected ? 'THEFT DETECTED' : 'NORMAL'}
             </div>
           </div>
 
