@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ref, onValue, set, update, push } from 'firebase/database';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, firestore } from '../firebase';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
 
 const formatVolume = (litres) => {
@@ -10,7 +11,41 @@ const formatVolume = (litres) => {
   if (val < 1) {
     return `${(val * 1000).toFixed(0)} ml`;
   }
-  return `${val.toFixed(3)} L`;
+  return litres.toFixed(2) + ' L';
+};
+
+// =========================
+// FLOW METER CARD (Animated)
+// =========================
+const FlowMeterCard = ({ flowRate, totalLitres, label }) => {
+  return (
+    <div className="card flow-card" style={{ padding: '1.5rem', background: 'linear-gradient(135deg, white, var(--primary-light))' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--primary)' }}>💧 {label}</h3>
+        {flowRate > 0 && (
+          <div className="flow-active-indicator" style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.2rem 0.6rem', borderRadius: '2rem', fontSize: '0.6rem', fontWeight: 800 }}>
+            <span className="flow-dot"></span> LIVE
+          </div>
+        )}
+      </div>
+      <div className="flow-meter-display" style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '2rem' }}>
+        <div className="flow-gauge" style={{ 
+          width: '100px', height: '100px', borderRadius: '50%', border: '6px solid var(--border-color)', 
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          borderColor: flowRate > 0 ? 'var(--primary)' : 'var(--border-color)',
+          boxShadow: flowRate > 0 ? '0 0 15px rgba(59, 130, 246, 0.3)' : 'none',
+          transition: 'all 0.5s ease'
+        }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: flowRate > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{(flowRate || 0).toFixed(1)}</div>
+          <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)' }}>L/min</div>
+        </div>
+        <div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>Total Billed</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)' }}>{formatVolume(totalLitres)}</div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 
@@ -28,6 +63,7 @@ const ConsumerDashboard = () => {
   const [prevLitres, setPrevLitres] = useState(null);
   const [myRecharges, setMyRecharges] = useState([]);
   const [myUsageLogs, setMyUsageLogs] = useState([]);
+  const [flowHistory, setFlowHistory] = useState([]);
   const lastSyncedBalanceRef = useRef(0);
   
   const { nodeId } = useParams();
@@ -96,6 +132,19 @@ const ConsumerDashboard = () => {
       unsubscribeSettings();
     };
   }, [nodeId, navigate, user.role, user.nodeId]);
+
+  // Keep a small buffer of flow history for the graph
+  useEffect(() => {
+    const rate = myNodeData?.flowRate || 0;
+    setFlowHistory(prev => {
+      const newPoint = { 
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), 
+        flow: parseFloat(rate.toFixed(2)) 
+      };
+      const updated = [...prev, newPoint].slice(-20); // Last 20 points
+      return updated;
+    });
+  }, [myNodeData?.flowRate]);
 
   // Helper to sync balance to Firestore for persistent history/last state
   const syncBalanceToFirestore = async (newBalance) => {
@@ -607,70 +656,49 @@ const ConsumerDashboard = () => {
               </div>
           </div>
 
-          {/* Flow Data Cards — ALWAYS visible when online */}
-          {myNodeOnline ? (
-            <div className="nodes-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
-              {/* Emergency SOS Card (shown alongside flow data, not replacing it) */}
-              {emergencyActive && (
-                <div className="card" style={{ gridColumn: '1 / -1', background: 'rgba(239, 68, 68, 0.05)', border: '2px dashed #ef4444' }}>
-                   <div style={{ textAlign: 'center', padding: '1rem' }}>
-                      <h3 style={{ color: '#ef4444', margin: 0 }}>SOS WATER USED</h3>
-                      <div className="value" style={{ fontSize: '2.5rem', color: '#ef4444' }}>
-                        {user.hasSensor !== false ? formatVolume(myNodeData?.emergencyLitres || 0) : `${Math.floor(emergencyValue)} sec`}
-                      </div>
-
-                   </div>
-                </div>
-              )}
-
-              {user.hasSensor !== false && (
-                <>
-                  <div className="card">
-                    <h3>Current Flow</h3>
-                    <div className="value" style={{ fontSize: '1.8rem' }}>
-                      {(myNodeData?.flowRate || 0).toFixed(1)}
-                      <span className="unit">L/min</span>
-                    </div>
-                    {myNodeData?.flowRate > 0 && (
-                      <div className="flow-active-indicator" style={{ transform: 'scale(0.8)', origin: 'left' }}>
-                        <span className="flow-dot"></span> Flowing
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="card" style={{ border: '1px solid var(--primary)', background: 'var(--primary-light)' }}>
-                    <h3 style={{ color: 'var(--primary)' }}>Normal Billed</h3>
-                    <div className="value" style={{ fontSize: '1.8rem' }}>
-                      {formatVolume(myNodeData?.totalLitres)}
-                    </div>
-                    <div className="status" style={{ fontSize: '0.6rem' }}>SESSION USAGE</div>
-                  </div>
-
-
-                  <div className="card" style={{ border: '1px solid var(--danger)', background: 'var(--danger-light)' }}>
-                    <h3 style={{ color: 'var(--danger)' }}>SOS Consumption</h3>
-                    <div className="value" style={{ fontSize: '1.8rem', color: 'var(--danger)' }}>
-                      {formatVolume(myNodeData?.emergencyLitresTotal || (myNodeData?.totalLitres - myNodeData?.billedLitres))}
-                    </div>
-                    <div className="status" style={{ fontSize: '0.6rem', background: 'var(--danger)', color: 'white' }}>FREE / SOS</div>
-                  </div>
-
-                </>
-              )}
-
-              <div className="card">
-                <h3>Est. Cost</h3>
-                <div className="value" style={{ fontSize: '1.8rem' }}>
-                  ₹{((myNodeData?.totalLitres || 0) * ratePerLitre).toFixed(2)}
-                </div>
-                <div className="status" style={{ fontSize: '0.6rem' }}>{user.hasSensor !== false ? 'THIS SESSION' : 'FIXED CHARGES'}</div>
+          {/* Real-time Flow & Graph Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <FlowMeterCard 
+                flowRate={myNodeData?.flowRate} 
+                totalLitres={myNodeData?.totalLitres} 
+                label="Current Home Flow" 
+              />
+              <div className="card" style={{ background: 'var(--danger-light)', border: '1px solid var(--danger)', padding: '1rem' }}>
+                 <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger)', marginBottom: '0.5rem' }}>SOS EMERGENCY RESERVES</div>
+                 <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--danger)' }}>
+                    {user.hasSensor !== false ? formatVolume(myNodeData?.emergencyLitres || 0) : `${Math.floor(emergencyValue)}s`}
+                 </div>
               </div>
             </div>
-          ) : (
-            <div className="card" style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-color)' }}>
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Waiting for hardware connection...</p>
+
+            <div className="card" style={{ padding: '1.25rem', height: '240px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '0.9rem' }}>📈 Usage Trend</h3>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Real-time L/min</span>
+              </div>
+              <div style={{ width: '100%', height: '160px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={flowHistory}>
+                    <defs>
+                      <linearGradient id="colorFlow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                    <XAxis dataKey="time" hide />
+                    <YAxis hide domain={[0, 'auto']} />
+                    <Tooltip 
+                      contentStyle={{ background: 'white', border: 'none', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '0.75rem' }}
+                      itemStyle={{ color: 'var(--primary)', fontWeight: 700 }}
+                    />
+                    <Area type="monotone" dataKey="flow" stroke="var(--primary)" strokeWidth={3} fillOpacity={1} fill="url(#colorFlow)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          )}
+          </div>
         </section>
 
         <div style={{ height: '2rem' }}></div>
