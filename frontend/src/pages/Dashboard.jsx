@@ -814,21 +814,29 @@ const Dashboard = () => {
   const [syncCountdown, setSyncCountdown] = useState(5.0);
 
   // ---- WEB SERIAL API (USB) ----
-  const [usbConnected, setUsbConnected] = useState(false);
-  const usbPortRef = useRef(null);
-  const usbWriterRef = useRef(null);
+  const [govUsbConnected, setGovUsbConnected] = useState(false);
+  const [consumerUsbConnected, setConsumerUsbConnected] = useState(false);
+  const govUsbPortRef = useRef(null);
+  const govUsbWriterRef = useRef(null);
+  const consumerUsbPortRef = useRef(null);
+  const consumerUsbWriterRef = useRef(null);
 
-  const handleConnectUSB = async () => {
+  const handleConnectUSB = async (type) => {
     if (!('serial' in navigator)) {
       toast.error('Web Serial API not supported in this browser. Use Chrome.');
       return;
     }
+    const isGov = type === 'gov';
+    const setConnected = isGov ? setGovUsbConnected : setConsumerUsbConnected;
+    const portRef = isGov ? govUsbPortRef : consumerUsbPortRef;
+    const writerRef = isGov ? govUsbWriterRef : consumerUsbWriterRef;
+
     try {
       const port = await navigator.serial.requestPort();
       await port.open({ baudRate: 115200 });
-      usbPortRef.current = port;
-      setUsbConnected(true);
-      toast.success('USB Serial Connected!');
+      portRef.current = port;
+      setConnected(true);
+      toast.success(`${isGov ? 'Gov' : 'Consumer Gateway'} USB Connected!`);
 
       const textDecoder = new TextDecoderStream();
       port.readable.pipeTo(textDecoder.writable);
@@ -836,7 +844,7 @@ const Dashboard = () => {
 
       const textEncoder = new TextEncoderStream();
       textEncoder.readable.pipeTo(port.writable);
-      usbWriterRef.current = textEncoder.writable.getWriter();
+      writerRef.current = textEncoder.writable.getWriter();
 
       let buffer = '';
       while (true) {
@@ -848,49 +856,48 @@ const Dashboard = () => {
         if (value) {
           buffer += value;
           let lines = buffer.split('\n');
-          buffer = lines.pop(); // keep the last incomplete line
+          buffer = lines.pop(); 
           for (let line of lines) {
             line = line.trim();
             if (line.startsWith('{') && line.endsWith('}')) {
               try {
                 const parsed = JSON.parse(line);
                 if (parsed.node) {
-                  // Inject current timestamp so online checks pass
                   parsed.lastSeen = Date.now();
-                  // USB always overrides Firebase locally
                   setData(prev => {
                     const next = { ...prev };
                     if (!next[parsed.node]) next[parsed.node] = {};
-                    next[parsed.node] = {
-                      ...next[parsed.node],
-                      ...parsed
-                    };
+                    next[parsed.node] = { ...next[parsed.node], ...parsed };
                     return next;
                   });
                 }
-              } catch (e) {
-                 // ignore
-              }
+              } catch (e) {}
             }
           }
         }
       }
     } catch (e) {
       console.error('Serial Error:', e);
-      if (e.name !== 'NotFoundError') { // User cancelled
+      if (e.name !== 'NotFoundError') {
         toast.error('USB Serial Error: ' + e.message);
       }
-      setUsbConnected(false);
+      setConnected(false);
     }
   };
 
   const sendUsbCommand = async (cmdString) => {
-    if (usbWriterRef.current && usbConnected) {
-      try {
-        await usbWriterRef.current.write(cmdString + '\n');
-        console.log("Sent USB Command:", cmdString);
-      } catch (e) {
-        console.error('USB Write Error:', e);
+    const targetNode = cmdString.split(':')[0];
+    if (targetNode === 'gov_node') {
+      if (govUsbWriterRef.current && govUsbConnected) {
+        try {
+          await govUsbWriterRef.current.write(cmdString + '\n');
+        } catch (e) { console.error('Gov USB Write Error:', e); }
+      }
+    } else {
+      if (consumerUsbWriterRef.current && consumerUsbConnected) {
+        try {
+          await consumerUsbWriterRef.current.write(cmdString + '\n');
+        } catch (e) { console.error('Consumer USB Write Error:', e); }
       }
     }
   };
@@ -2136,11 +2143,18 @@ const Dashboard = () => {
                   {soundEnabled ? '🔊 Alerts Sound' : '🔇 Enable Sound'}
                 </button>
                 <button 
-                  onClick={handleConnectUSB}
+                  onClick={() => handleConnectUSB('consumer')}
                   className="reset-btn"
-                  style={{ background: usbConnected ? 'var(--success)' : '#0f172a', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  style={{ background: consumerUsbConnected ? 'var(--success)' : '#0f172a', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
-                  🔌 {usbConnected ? 'USB Active' : 'Connect USB'}
+                  🔌 {consumerUsbConnected ? 'Consumer USB Active' : 'Connect Consumer USB'}
+                </button>
+                <button 
+                  onClick={() => handleConnectUSB('gov')}
+                  className="reset-btn"
+                  style={{ background: govUsbConnected ? 'var(--success)' : '#0f172a', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  🔌 {govUsbConnected ? 'Gov USB Active' : 'Connect Gov USB'}
                 </button>
                 <button
                   onClick={() => {
