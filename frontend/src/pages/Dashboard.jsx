@@ -737,12 +737,23 @@ const Dashboard = () => {
       for (const [nodeId, nodePayload] of Object.entries(incoming)) {
         if (nodePayload && typeof nodePayload === 'object') {
           const prevNode = prevSafe[nodeId] && typeof prevSafe[nodeId] === 'object' ? prevSafe[nodeId] : {};
-          next[nodeId] = { ...prevNode, ...nodePayload };
+          
+          // Protect Heartbeat: If we have a newer local timestamp (likely from USB), don't overwrite it with stale Firebase data.
+          const incomingLastSeen = typeof nodePayload.lastSeen === 'number' 
+            ? (nodePayload.lastSeen < 1e12 ? nodePayload.lastSeen * 1000 : nodePayload.lastSeen)
+            : (nodePayload.lastSeen ? Number(nodePayload.lastSeen) : 0);
+          
+          const currentLastSeen = prevNode.lastSeen || 0;
+          const winnerLastSeen = Math.max(currentLastSeen, incomingLastSeen);
+
+          next[nodeId] = { 
+            ...prevNode, 
+            ...nodePayload,
+            lastSeen: winnerLastSeen > 0 ? winnerLastSeen : prevNode.lastSeen 
+          };
         } else if (nodePayload !== undefined && nodePayload !== null) {
-          // Non-object primitive fields (rare) still overwrite
           next[nodeId] = nodePayload;
         }
-        // If Firebase briefly returns null/undefined for a node, keep previous node data.
       }
       return next;
     };
@@ -847,6 +858,7 @@ const Dashboard = () => {
       writerRef.current = textEncoder.writable.getWriter();
 
       let buffer = '';
+      let firstPacket = true;
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
@@ -854,6 +866,10 @@ const Dashboard = () => {
           break;
         }
         if (value) {
+          if (firstPacket) {
+            toast.success('Receiving live telemetry via USB!');
+            firstPacket = false;
+          }
           buffer += value;
           let lines = buffer.split('\n');
           buffer = lines.pop(); 
