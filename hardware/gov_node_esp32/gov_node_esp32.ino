@@ -255,7 +255,7 @@ void loop() {
       Firebase.RTDB.setFloat(&fbdo, F("sensorData/gov_node/flowRate"), flowRate);
       Firebase.RTDB.setTimestamp(&fbdo, F("sensorData/gov_node/lastSeen"));
     }
-
+ 
     // USB SERIAL JSON (Gov node fields)
     Serial.printf("{\"node\":\"gov_node\",\"flowRate\":%.3f,\"govSupplyLitres\":%.2f,\"turbidityVoltage\":%.2f,\"tdsValue\":%.1f,\"tdsConnected\":%s,\"turbidityConnected\":%s,\"waterStatus\":\"%s\",\"lastSeen\":%lu}\n",
       flowRate, govSupplyLitres, turbidityVolts, tdsValue, 
