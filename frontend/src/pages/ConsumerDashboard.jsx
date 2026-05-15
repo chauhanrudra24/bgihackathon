@@ -60,7 +60,7 @@ const ConsumerDashboard = () => {
   const [rechargeAmount, setRechargeAmount] = useState('');
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
-  const [prevLitres, setPrevLitres] = useState(null);
+  const prevLitresRef = useRef(null);
   const [myRecharges, setMyRecharges] = useState([]);
   const [myUsageLogs, setMyUsageLogs] = useState([]);
   const [flowHistory, setFlowHistory] = useState([]);
@@ -202,13 +202,15 @@ const ConsumerDashboard = () => {
     if (!myNodeData || account.balance === undefined) return;
 
     const currentLitres = myNodeData.totalLitres || 0;
+    const prevLitres = prevLitresRef.current;
     
     if (prevLitres !== null && currentLitres > prevLitres) {
       const litresUsed = currentLitres - prevLitres;
       const cost = litresUsed * ratePerLitre;
       const newBalance = Math.max(0, account.balance - cost);
       
-      if (newBalance !== account.balance) {
+      // Only update if there's a significant change to avoid micro-updates
+      if (Math.abs(newBalance - account.balance) > 0.001) {
         set(ref(db, `accounts/${nodeId}/balance`), parseFloat(newBalance.toFixed(2)));
         
         // Log usage history
@@ -232,12 +234,12 @@ const ConsumerDashboard = () => {
         set(ref(db, `valves/${nodeId}/gov`), false);
       }
     } else if (prevLitres !== null && currentLitres < prevLitres) {
-      // System reset detected: Sync prevLitres to current (0) without billing
+      // System reset detected: Sync billing baseline
       console.log("Reset detected, syncing billing baseline.");
     }
     
-    setPrevLitres(currentLitres);
-  }, [myNodeData?.totalLitres]);
+    prevLitresRef.current = currentLitres;
+  }, [myNodeData?.totalLitres, account.balance, ratePerLitre, nodeId, account.blocked]);
 
 
   const triggerEmergency = async () => {

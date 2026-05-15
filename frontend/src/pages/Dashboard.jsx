@@ -812,6 +812,89 @@ const Dashboard = () => {
 
   // ---- SYNC HEARTBEAT TIMER (Next Refresh Countdown) ----
   const [syncCountdown, setSyncCountdown] = useState(5.0);
+
+  // ---- WEB SERIAL API (USB) ----
+  const [usbConnected, setUsbConnected] = useState(false);
+  const usbPortRef = useRef(null);
+  const usbWriterRef = useRef(null);
+
+  const handleConnectUSB = async () => {
+    if (!('serial' in navigator)) {
+      toast.error('Web Serial API not supported in this browser. Use Chrome.');
+      return;
+    }
+    try {
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      usbPortRef.current = port;
+      setUsbConnected(true);
+      toast.success('USB Serial Connected!');
+
+      const textDecoder = new TextDecoderStream();
+      port.readable.pipeTo(textDecoder.writable);
+      const reader = textDecoder.readable.getReader();
+
+      const textEncoder = new TextEncoderStream();
+      textEncoder.readable.pipeTo(port.writable);
+      usbWriterRef.current = textEncoder.writable.getWriter();
+
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          reader.releaseLock();
+          break;
+        }
+        if (value) {
+          buffer += value;
+          let lines = buffer.split('\n');
+          buffer = lines.pop(); // keep the last incomplete line
+          for (let line of lines) {
+            line = line.trim();
+            if (line.startsWith('{') && line.endsWith('}')) {
+              try {
+                const parsed = JSON.parse(line);
+                if (parsed.node) {
+                  // Inject current timestamp so online checks pass
+                  parsed.lastSeen = Date.now();
+                  // USB always overrides Firebase locally
+                  setData(prev => {
+                    const next = { ...prev };
+                    if (!next[parsed.node]) next[parsed.node] = {};
+                    next[parsed.node] = {
+                      ...next[parsed.node],
+                      ...parsed
+                    };
+                    return next;
+                  });
+                }
+              } catch (e) {
+                 // ignore
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Serial Error:', e);
+      if (e.name !== 'NotFoundError') { // User cancelled
+        toast.error('USB Serial Error: ' + e.message);
+      }
+      setUsbConnected(false);
+    }
+  };
+
+  const sendUsbCommand = async (cmdString) => {
+    if (usbWriterRef.current && usbConnected) {
+      try {
+        await usbWriterRef.current.write(cmdString + '\n');
+        console.log("Sent USB Command:", cmdString);
+      } catch (e) {
+        console.error('USB Write Error:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setSyncCountdown(prev => {
@@ -987,6 +1070,11 @@ const Dashboard = () => {
       // To keep it simple and consistent with your style, I'll keep individual sets but as a promise array
       await Promise.all(Object.entries(updates).map(([path, val]) => set(ref(db, path), val)));
 
+      // USB Override
+      sendUsbCommand('consumer_node:resetData');
+      sendUsbCommand('consumer_node_8266:resetData');
+      sendUsbCommand('gov_node:resetData');
+
       // 4. Turn off reset flags after 5 seconds to let hardware catch up
       setTimeout(() => {
         const clearCommands = {};
@@ -1074,6 +1162,7 @@ const Dashboard = () => {
       const updates = {};
       updates[`valves/${nodeId}/gov`] = newState;
       await update(ref(db), updates);
+      sendUsbCommand(`${nodeId}:${newState ? 'openValve' : 'closeValve'}`);
       toast.success(`Valve ${newState ? 'Opened' : 'Closed'}`, { id: toastId });
     } catch (error) {
       toast.error("Failed to update valve", { id: toastId });
@@ -1254,9 +1343,12 @@ const Dashboard = () => {
                 updates[`valves/${id}/gov`] = true; // Unblock automatically
                 updates[`accounts/${id}/theftFlagged`] = false; // Also clear any associated theft flags
                 update(ref(db), updates);
+                sendUsbCommand(`${id}:clearTamper`);
               }}
               onToggleEmergency={(id, name) => {
                 const isActive = data[id]?.emergencyActive || false;
+                sendUsbCommand(`${id}:toggleSOS`);
+                
                 if (isActive) {
                   set(ref(db, `commands/${id}/sosActive`), false);
                   toast.success(`SOS Stopped for ${name}`);
@@ -1764,7 +1856,7 @@ const Dashboard = () => {
   // ==========================
   // DETAILED HOUSE CARD
   // ==========================
-  const DetailedHouseCard = ({ consumer, nodeData, account }) => {
+  const DetailedHouseCard = ({ consumer, nodeData, account, onRecharge, onToggleValve, onBlockToggle, onManage }) => {
     const online = isNodeOnline(nodeData);
     const flowRate = nodeData?.flowRate || 0;
     const todayUsage = nodeData?.totalLitres || 0;
@@ -1819,10 +1911,14 @@ const Dashboard = () => {
               {flowRate.toFixed(2)} <small style={{ fontSize: '0.7rem' }}>L/min</small>
             </div>
           </div>
-          <div style={{ background: 'white', padding: '1rem', textAlign: 'center' }}>
+          <div 
+            onClick={onRecharge}
+            style={{ background: 'white', padding: '1rem', textAlign: 'center', cursor: 'pointer' }}
+            title="Click to recharge"
+          >
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Wallet Balance</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: balance > 100 ? 'var(--success)' : 'var(--danger)' }}>
-              ₹{balance.toFixed(0)}
+              ₹{balance.toFixed(0)} <span style={{ fontSize: '0.8rem' }}>➕</span>
             </div>
           </div>
         </div>
@@ -1867,6 +1963,38 @@ const Dashboard = () => {
              </span>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {(tamper || theft) && (
+              <button 
+                onClick={onBlockToggle}
+                style={{ 
+                  padding: '0.4rem 0.8rem', 
+                  fontSize: '0.75rem', 
+                  background: 'var(--success)', 
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer',
+                  fontWeight: 700
+                }}
+              >
+                Verify & Unblock
+              </button>
+            )}
+            <button 
+              onClick={onToggleValve}
+              style={{ 
+                padding: '0.4rem 0.8rem', 
+                fontSize: '0.75rem', 
+                background: valveOpen ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                color: valveOpen ? 'var(--danger)' : 'var(--success)',
+                border: valveOpen ? '1px solid var(--danger)' : '1px solid var(--success)',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                fontWeight: 700
+              }}
+            >
+              {valveOpen ? 'Lock' : 'Open'}
+            </button>
             <button 
               className="recharge-btn" 
               style={{ 
@@ -1878,7 +2006,7 @@ const Dashboard = () => {
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer'
               }} 
-              onClick={() => handleEditBalance(consumer.nodeId, balance, consumer.name)}
+              onClick={onRecharge}
             >
               Recharge
             </button>
@@ -1888,10 +2016,12 @@ const Dashboard = () => {
                 padding: '0.4rem 0.8rem', 
                 fontSize: '0.75rem', 
                 background: 'white', 
-                borderColor: 'var(--primary)',
-                color: 'var(--primary)'
+                border: '1px solid var(--primary)',
+                color: 'var(--primary)',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer'
               }} 
-              onClick={() => setActiveTab('dashboard')}
+              onClick={onManage}
             >
               Manage
             </button>
@@ -1925,6 +2055,10 @@ const Dashboard = () => {
             consumer={consumer}
             nodeData={data?.[consumer.nodeId] || {}}
             account={accounts[consumer.nodeId] || {}}
+            onRecharge={() => handleEditBalance(consumer.nodeId, accounts[consumer.nodeId]?.balance ?? 500, consumer.name)}
+            onToggleValve={() => handleToggleValve(consumer.nodeId, data?.[consumer.nodeId]?.valveState ?? false)}
+            onBlockToggle={() => handleBlockToggle(consumer.nodeId)}
+            onManage={() => setActiveTab('dashboard')}
           />
         ))}
       </div>
@@ -2000,6 +2134,13 @@ const Dashboard = () => {
                   }}
                 >
                   {soundEnabled ? '🔊 Alerts Sound' : '🔇 Enable Sound'}
+                </button>
+                <button 
+                  onClick={handleConnectUSB}
+                  className="reset-btn"
+                  style={{ background: usbConnected ? 'var(--success)' : '#0f172a', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  🔌 {usbConnected ? 'USB Active' : 'Connect USB'}
                 </button>
                 <button
                   onClick={() => {
