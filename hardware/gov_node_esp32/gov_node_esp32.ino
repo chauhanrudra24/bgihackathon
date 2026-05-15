@@ -263,5 +263,4 @@ void loop() {
       (turbidityVolts > 0.1) ? "true" : "false",
       (turbidityVolts > 3.0) ? "CLEAR" : "DIRTY", millis());
   }
-  }
 }
