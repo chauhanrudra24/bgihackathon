@@ -248,7 +248,7 @@ void loop() {
     }
   }
 
-  if (millis() - sendFlowPrevMillis > 2000) {
+  if (millis() - sendFlowPrevMillis > 500) {
     sendFlowPrevMillis = millis();
     
     if (firebaseConnected && Firebase.ready()) {

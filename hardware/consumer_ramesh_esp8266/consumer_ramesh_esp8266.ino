@@ -434,7 +434,7 @@ void loop() {
 
   // ---- 5. REALTIME DATA & JSON OVER SERIAL (every 2s) ----
   static unsigned long lastRealtimeReport = 0;
-  if (millis() - lastRealtimeReport > 2000) {
+  if (millis() - lastRealtimeReport > 500) {
     lastRealtimeReport = millis();
     
     // Send via Firebase if connected

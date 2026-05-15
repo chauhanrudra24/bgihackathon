@@ -880,6 +880,13 @@ const Dashboard = () => {
                 const parsed = JSON.parse(line);
                 if (parsed.node) {
                   parsed.lastSeen = Date.now();
+
+                  // USB-to-Firebase Bridge: Push USB telemetry to the cloud
+                  const sensorPayload = { ...parsed };
+                  const targetNodeId = sensorPayload.node;
+                  delete sensorPayload.node;
+                  update(ref(db, `sensorData/${targetNodeId}`), sensorPayload);
+
                   setData(prev => {
                     const next = { ...prev };
                     if (!next[parsed.node]) next[parsed.node] = {};

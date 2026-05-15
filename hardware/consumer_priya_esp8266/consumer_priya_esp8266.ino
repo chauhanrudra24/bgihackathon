@@ -371,7 +371,7 @@ void loop() {
   }
 
   // ---- USB SERIAL + FIREBASE JSON ----
-  if (millis() - sendDataPrevMillis > 2000) {
+  if (millis() - sendDataPrevMillis > 500) {
     sendDataPrevMillis = millis();
     
     if (firebaseConnected && Firebase.ready()) {
